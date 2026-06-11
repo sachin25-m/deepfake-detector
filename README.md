@@ -1,11 +1,11 @@
-# 🛡️ Aegis AI: Deepfake & AI Content Detector
+# 🛡️ RealNetra: Deepfake & AI Content Detector
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-20232a?style=flat&logo=react)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8A2BE2?style=flat&logo=vite)](https://vitejs.dev/)
 
-A modern, full-stack application designed to analyze and detect AI-generated media (images and videos) as well as AI-generated text. Aegis AI features a premium, glassmorphic dark-mode interface built with React 19, paired with a FastAPI backend that utilizes smart heuristics (like EXIF metadata parsing, linguistic anomaly detection, and filename signature evaluation) to simulate forensic neural networks.
+A modern, full-stack application designed to analyze and detect AI-generated media (images and videos) as well as AI-generated text. RealNetra features a premium, glassmorphic dark-mode interface built with React 19, paired with a FastAPI backend that utilizes smart heuristics (like EXIF metadata parsing, linguistic anomaly detection, and filename signature evaluation) to simulate forensic neural networks.
 
 ---
 
@@ -20,7 +20,7 @@ A modern, full-stack application designed to analyze and detect AI-generated med
 
 ## 🛠️ System Architecture
 
-The following diagram illustrates how the Aegis AI frontend and backend communicate, including the data persistence flow:
+The following diagram illustrates how the RealNetra frontend and backend communicate, including the data persistence flow:
 
 ```mermaid
 graph TD
@@ -95,6 +95,7 @@ deepfake-detector/
 │   │   ├── index.css        # Glassmorphic UI design tokens & global rules
 │   │   └── main.jsx         # React application entry point
 │   ├── package.json         # Node.js workspace configuration
+│   ├── .env.production      # Production environment configuration template
 │   └── vite.config.js       # Vite bundler options
 ├── run.bat                  # Automated multi-process shell runner (Windows)
 ├── schema.md                # Data schemas & API contract specifications
@@ -202,7 +203,7 @@ Used by the Text Analyzer. Accepts `application/json`.
 
 ## 🔍 Heuristic Classification Rules
 
-Aegis AI relies on a smart, deterministic scoring model inside [backend/main.py](file:///c:/Users/SACHIN%20MISHRA/.gemini/antigravity/scratch/deepfake-detector/backend/main.py):
+RealNetra relies on a smart, deterministic scoring model inside [backend/main.py](file:///c:/Users/SACHIN%20MISHRA/.gemini/antigravity/scratch/deepfake-detector/backend/main.py):
 
 *   **Image Detection**: Reads file content bytes utilizing Pillow. If the image metadata contains more than two EXIF fields, it is flagged as `REAL` (authentic photograph). If EXIF metadata is stripped (as standard generative AI platforms do), it is flagged as `DEEPFAKE`.
 *   **Video Detection**: Inspects naming conventions. Filenames containing terms like `"fake"`, `"ai"`, or `"synth"` trigger a `DEEPFAKE` verdict; others fall back to `REAL`.
@@ -224,7 +225,7 @@ To transition this framework from a heuristic simulation to a production-grade d
 
 ## ⚠️ Disclaimer
 
-Aegis AI is currently built as an educational and UI/UX demonstration framework. The backend simulates neural network output weights based on heuristic parameters rather than live neural-network model inference. It should not be used as a final verification tool in critical production safety workflows.
+RealNetra is currently built as an educational and UI/UX demonstration framework. The backend simulates neural network output weights based on heuristic parameters rather than live neural-network model inference. It should not be used as a final verification tool in critical production safety workflows.
 
 ---
 
