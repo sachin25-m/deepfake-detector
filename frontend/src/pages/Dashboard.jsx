@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, ShieldAlert, ShieldCheck, Trash2, List } from 'lucide-react';
 
-const INITIAL_HISTORY = [
+export const INITIAL_HISTORY = [
   { id: 1, date: '2026-05-12 11:04', name: 'chatgpt_response.txt', result: 'AI GENERATED', confidence: 98.2 },
   { id: 2, date: '2026-05-12 10:23', name: 'video_interview.mp4', result: 'DEEPFAKE', confidence: 94.2 },
   { id: 3, date: '2026-05-11 09:15', name: 'profile_pic.png', result: 'REAL', confidence: 99.1 },

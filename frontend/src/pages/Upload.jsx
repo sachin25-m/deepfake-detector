@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, FileVideo, Image as ImageIcon, X, FileText, AlignLeft, ShieldAlert } from 'lucide-react';
 import Detector from '../components/Detector';
 import axios from 'axios';
+import { INITIAL_HISTORY } from './Dashboard';
 
 export default function Upload() {
   const [activeTab, setActiveTab] = useState('image'); // 'image', 'video' or 'text'
@@ -78,9 +79,7 @@ export default function Upload() {
       if (activeTab === 'image' || activeTab === 'video') {
         const formData = new FormData();
         formData.append('file', file);
-        response = await axios.post('http://127.0.0.1:8000/api/detect', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        response = await axios.post('http://127.0.0.1:8000/api/detect', formData);
       } else {
         response = await axios.post('http://127.0.0.1:8000/api/detect-text', { text: textInput }, {
           headers: { 'Content-Type': 'application/json' }
@@ -90,6 +89,22 @@ export default function Upload() {
       setTimeout(() => {
         setResult(response.data);
         setStatus('complete');
+        
+        // Save to history
+        const newHistoryItem = {
+          id: Date.now(),
+          date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+          name: response.data.filename || (activeTab === 'text' ? 'Text Snippet' : 'Unknown File'),
+          result: response.data.result,
+          confidence: response.data.confidence
+        };
+        
+        const saved = localStorage.getItem('scanHistory');
+        let currentHistory = saved !== null ? JSON.parse(saved) : INITIAL_HISTORY;
+        
+        const updatedHistory = [newHistoryItem, ...currentHistory];
+        localStorage.setItem('scanHistory', JSON.stringify(updatedHistory));
+        
       }, 4500);
 
     } catch (err) {

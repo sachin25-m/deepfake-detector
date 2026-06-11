@@ -24,7 +24,11 @@ def read_root():
 
 @app.post("/api/detect")
 async def detect_media(file: UploadFile = File(...)):
-    if not file.content_type.startswith("image/") and not file.content_type.startswith("video/"):
+    content_type = file.content_type or ""
+    filename = (file.filename or "").lower()
+    is_image = content_type.startswith("image/") or filename.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
+    is_video = content_type.startswith("video/") or filename.endswith((".mp4", ".mov", ".avi", ".hevc", ".mkv"))
+    if not is_image and not is_video:
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image or video.")
     
     # Simulate processing time for realistic UI (wait 3 seconds total but chunked across steps in frontend ideally)
@@ -35,7 +39,7 @@ async def detect_media(file: UploadFile = File(...)):
     confidence = round(random.uniform(85.0, 95.0), 2)
     model_used = "Heuristic Metadata + Noise Analysis (Simulated CNN)"
     
-    if file.content_type.startswith("image/"):
+    if is_image:
         try:
             # Read image to check for metadata which AI generators often omit
             image_data = await file.read()
