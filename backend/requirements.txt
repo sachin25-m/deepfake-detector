@@ -1,5 +1,6 @@
 fastapi
 uvicorn
 python-multipart
+pillow
 # tensorflow # To be added later if deploying real model
 # opencv-python # To be added later if deploying real model

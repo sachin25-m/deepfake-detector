@@ -4,6 +4,8 @@ import Detector from '../components/Detector';
 import axios from 'axios';
 import { INITIAL_HISTORY } from './Dashboard';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 export default function Upload() {
   const [activeTab, setActiveTab] = useState('image'); // 'image', 'video' or 'text'
   const [file, setFile] = useState(null);
@@ -79,9 +81,9 @@ export default function Upload() {
       if (activeTab === 'image' || activeTab === 'video') {
         const formData = new FormData();
         formData.append('file', file);
-        response = await axios.post('http://127.0.0.1:8000/api/detect', formData);
+        response = await axios.post(`${API_BASE_URL}/api/detect`, formData);
       } else {
-        response = await axios.post('http://127.0.0.1:8000/api/detect-text', { text: textInput }, {
+        response = await axios.post(`${API_BASE_URL}/api/detect-text`, { text: textInput }, {
           headers: { 'Content-Type': 'application/json' }
         });
       }
