@@ -1,34 +1,48 @@
-# Deepfake Detector Schema & Architecture
+# RealNetra Deepfake Detector Schema & Architecture
 
-This document outlines the API endpoints, data models, and storage structure used in the Deepfake Detector application.
+This document outlines the API endpoints, data models, and storage structure used in the RealNetra Deepfake Detection application.
 
 ## 1. Backend API Schema (FastAPI)
 
-The backend exposes three main endpoints. It runs locally on `http://127.0.0.1:8000`.
+The backend exposes ML endpoints running locally on `http://127.0.0.1:8000`.
 
-### `GET /` (Health Check)
+### `GET /` (Health & Model Status)
 *   **Request Body**: None
-*   **Response**: 
+*   **Response (JSON)**: 
     ```json
     {
-      "message": "Deepfake Detection API Simulation is running."
+      "status": "online",
+      "service": "RealNetra Deepfake Detection API",
+      "model": "dima806/deepfake_vs_real_image_detection",
+      "architecture": "Vision Transformer (ViT-base-patch16-224)"
     }
     ```
 
 ### `POST /api/detect` (Media Scanner)
 *   **Request Type**: `multipart/form-data`
-*   **Request Body**: `file` (An Image or Video file)
+*   **Request Body**: `file` (Image or Video binary file)
 *   **Success Response (JSON)**:
     ```json
     {
-      "filename": "string (e.g., photo.jpg)",
-      "type": "string (e.g., image/jpeg)",
-      "result": "DEEPFAKE" | "REAL",
-      "confidence": 95.0,
+      "filename": "portrait.jpg",
+      "type": "image/jpeg",
+      "result": "REAL" | "DEEPFAKE" | "UNCERTAIN",
+      "confidence": 82.95,
       "details": {
-        "model_used": "string (Model architecture name)",
-        "faces_detected": "integer (1-3)",
-        "artifacts_found": "integer (e.g., 12)"
+        "model_used": "Vision Transformer (dima806/deepfake_vs_real_image_detection)",
+        "faces_detected": 1,
+        "face_crop_applied": true,
+        "real_probability": 82.95,
+        "fake_probability": 17.05,
+        "explanation": "Natural facial feature distribution and authentic pixel coherence verified by Vision Transformer.",
+        "metadata_forensics": {
+          "has_exif": false,
+          "camera_make": "Unknown / Stripped",
+          "camera_model": "Unknown / Stripped",
+          "software": "Not Specified",
+          "date_time": "N/A",
+          "fields_detected": 0
+        }
       }
     }
     ```
@@ -38,7 +52,7 @@ The backend exposes three main endpoints. It runs locally on `http://127.0.0.1:8
 *   **Request Body (JSON)**:
     ```json
     {
-      "text": "string (The text payload to analyze, min 10 chars)"
+      "text": "The text payload to analyze (minimum 10 characters)"
     }
     ```
 *   **Success Response (JSON)**:
@@ -46,12 +60,15 @@ The backend exposes three main endpoints. It runs locally on `http://127.0.0.1:8
     {
       "filename": "Text Snippet",
       "type": "text/plain",
-      "result": "AI GENERATED" | "HUMAN WRITTEN",
-      "confidence": 92.5,
+      "result": "HUMAN WRITTEN" | "AI GENERATED" | "UNCERTAIN",
+      "confidence": 85.0,
       "details": {
-        "model_used": "string (Model architecture name)",
-        "sentences_analyzed": "integer",
-        "artifacts_found": "integer (AI keyword hit count)"
+        "model_used": "Stylometric NLP Pattern & Perplexity Analyzer",
+        "sentences_analyzed": 3,
+        "ai_probability": 15.0,
+        "human_probability": 85.0,
+        "ai_markers_count": 0,
+        "human_markers_count": 2
       }
     }
     ```
@@ -60,7 +77,7 @@ The backend exposes three main endpoints. It runs locally on `http://127.0.0.1:8
 
 ## 2. Frontend Storage Schema (React)
 
-The React frontend persists data directly in the browser's `localStorage` under the key `"scanHistory"`. This acts as the local database for the Dashboard.
+The React frontend persists scan records directly in the browser's `localStorage` under the key `"scanHistory"`.
 
 ### `scanHistory` (Array of Objects)
 ```json
@@ -68,19 +85,20 @@ The React frontend persists data directly in the browser's `localStorage` under 
   {
     "id": 1715509930219,             
     "date": "2026-05-12 11:04",      
-    "name": "video_interview.mp4",   
-    "result": "DEEPFAKE",            
-    "confidence": 94.2               
+    "name": "portrait_sample.jpg",   
+    "result": "REAL",            
+    "confidence": 82.95               
   }
 ]
 ```
 - **`id`**: Unique identifier (Unix Timestamp, integer)
 - **`date`**: Formatted Date String (`YYYY-MM-DD HH:MM`)
 - **`name`**: The name of the file or "Text Snippet" (string)
-- **`result`**: The detection outcome (`DEEPFAKE`, `REAL`, `AI GENERATED`, or `HUMAN WRITTEN`)
-- **`confidence`**: Detection confidence percentage (float/number)
+- **`result`**: The detection outcome (`REAL`, `DEEPFAKE`, `UNCERTAIN`, `AI GENERATED`, `HUMAN WRITTEN`)
+- **`confidence`**: Inference confidence percentage (float/number)
 
 ## 3. High-Level Component Structure
-*   **Upload Page (`Upload.jsx`)**: Handles user input (drag-and-drop or text), validates files locally, formats the payload for the API, and saves successful responses to `localStorage`.
-*   **Detector Component (`Detector.jsx`)**: The UI stepper that fakes the "neural scan" loading animations and displays the JSON response from the backend.
-*   **Dashboard Page (`Dashboard.jsx`)**: Reads the `scanHistory` array from `localStorage` to populate the stats widgets and the recent activity table.
+*   **Upload Page (`Upload.jsx`)**: Handles media/text input, submits payload to FastAPI backend, and saves response to `localStorage`.
+*   **Detector Component (`Detector.jsx`)**: Renders the multi-stage visual inspection steps, probability breakdown, face localization status, EXIF forensics, and handles `REAL`, `DEEPFAKE`, and `UNCERTAIN` states.
+*   **Dashboard Page (`Dashboard.jsx`)**: Displays dynamic history, statistics widgets, and filterable audit tables.
+

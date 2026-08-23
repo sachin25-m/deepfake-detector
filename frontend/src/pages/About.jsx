@@ -1,87 +1,60 @@
 import React from 'react';
-import { Network, Database as DatabaseIcon, Cpu, Layers, ShieldCheck, Zap } from 'lucide-react';
+import { Network, Database as DatabaseIcon, Cpu, ShieldCheck } from 'lucide-react';
 
 export default function About() {
   return (
-    <div className="animate-slide-up" style={{ maxWidth: '880px', margin: '0 auto', paddingTop: '1.5rem' }}>
-      
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
-        <h2 style={{ fontSize: '2.75rem', fontWeight: '800', marginBottom: '0.75rem', letterSpacing: '-0.03em' }}>
-          How <span className="text-gradient">RealNetra</span> Operates
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', maxWidth: '640px', margin: '0 auto', lineHeight: 1.6 }}>
-          Understanding the multi-modal forensic inspection & neural deepfake detection pipeline.
+    <div style={{ maxWidth: '850px', margin: '0 auto', paddingBottom: '3rem' }}>
+      <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+        <h2 style={{ fontSize: '2.5rem', fontWeight: '700', marginBottom: '1rem' }}>How RealNetra Works</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', lineHeight: 1.6 }}>
+          Understanding the genuine Machine Learning architecture behind RealNetra's deepfake detection engine.
         </p>
       </div>
 
-      {/* Card 1: MesoNet & Spatial CNN */}
-      <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem', borderRadius: '24px', border: '1px solid var(--glass-border-hover)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
-          <div style={{ padding: '0.85rem', background: 'rgba(0, 240, 255, 0.1)', borderRadius: '16px', border: '1px solid var(--primary-glow)' }}>
-            <Network size={28} color="var(--primary)" />
-          </div>
-          <div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: '700' }}>MesoNet & Spatial Convolutional Neural Network</h3>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>LAYER 1: MESOSCOPIC ANOMALY INSPECTOR</span>
-          </div>
+      <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <Network size={32} color="var(--primary)" />
+          <h3 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Vision Transformer (ViT) Architecture</h3>
         </div>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1rem', fontSize: '0.975rem' }}>
-          Our neural architecture builds upon <strong>Meso4 CNNs</strong> (Afchar et al., IEEE WIFS). Rather than relying on simple metadata or facial recognition tags, it evaluates mesoscopic facial feature maps for subtle degradation, eye-to-mouth blending artifacts, and GAN upsampling noise.
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1rem' }}>
+          RealNetra utilizes a pre-trained Vision Transformer model (<code style={{ color: 'var(--primary)' }}>dima806/deepfake_vs_real_image_detection</code>), fine-tuned specifically to detect facial deepfakes, face swaps, and synthetic facial manipulation.
         </p>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, fontSize: '0.975rem' }}>
-          Deepfakes leave microscopic traces—blurry boundaries, unnatural illumination shifts, and pixel perturbations that human eyes miss. RealNetra isolates these pixel-level discrepancies instantly.
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          Unlike traditional convolutional models that only focus on local receptive fields, the Vision Transformer splits facial crops into 16x16 pixel patches and uses self-attention mechanisms to evaluate global relationships, capturing boundary blending artifacts, unnatural skin textures, and synthetic facial warping.
         </p>
       </div>
 
-      {/* Card 2: Multi-Modal Forensic Fusion */}
-      <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem', borderRadius: '24px', border: '1px solid var(--glass-border-hover)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
-          <div style={{ padding: '0.85rem', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '16px', border: '1px solid var(--secondary-glow)' }}>
-            <Layers size={28} color="var(--secondary)" />
-          </div>
-          <div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: '700' }}>Multi-Modal Forensic Triangulation</h3>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>LAYER 2: ELA + 2D FFT + BOUNDARY SEAMS</span>
-          </div>
+      <div className="glass-panel" style={{ padding: '2.5rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <DatabaseIcon size={32} color="var(--accent)" />
+          <h3 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Preprocessing & Face Localization</h3>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginTop: '1rem' }}>
-          <div style={{ padding: '1.25rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '16px' }}>
-            <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '0.4rem', fontSize: '0.95rem' }}>Error Level Analysis (ELA)</strong>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>Detects compression ratio anomalies between spliced facial crops and background zones.</p>
-          </div>
-          <div style={{ padding: '1.25rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '16px' }}>
-            <strong style={{ color: 'var(--secondary)', display: 'block', marginBottom: '0.4rem', fontSize: '0.95rem' }}>2D FFT Power Spectrum</strong>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>Scans frequency domain for high-frequency checkerboard grid peaks from GAN & Diffusion models.</p>
-          </div>
-          <div style={{ padding: '1.25rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '16px' }}>
-            <strong style={{ color: 'var(--accent)', display: 'block', marginBottom: '0.4rem', fontSize: '0.95rem' }}>Laplacian Seam Inspector</strong>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>Inspects edge gradient discontinuities and alpha feathering along face perimeters.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Card 3: Training Datasets */}
-      <div className="glass-panel" style={{ padding: '2.5rem', borderRadius: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
-          <div style={{ padding: '0.85rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '16px', border: '1px solid var(--success-glow)' }}>
-            <DatabaseIcon size={28} color="var(--success)" />
-          </div>
-          <div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: '700' }}>Validated Benchmarks & Datasets</h3>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>CROSS-MODEL EVALUATION</span>
-          </div>
-        </div>
-        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, fontSize: '0.975rem' }}>
-          RealNetra has been evaluated across industry-standard benchmark corpora to ensure resilience against diverse manipulation methods:
+        <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: '1rem' }}>
+          To ensure genuine forensic detection regardless of image origin or metadata presence:
         </p>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
-          <span className="badge badge-primary" style={{ padding: '0.5rem 1.25rem' }}>FaceForensics++</span>
-          <span className="badge badge-primary" style={{ padding: '0.5rem 1.25rem', borderColor: 'var(--secondary-glow)', color: 'var(--secondary)', background: 'rgba(139, 92, 246, 0.1)' }}>DFDC (Deepfake Detection Challenge)</span>
-          <span className="badge badge-primary" style={{ padding: '0.5rem 1.25rem', borderColor: 'var(--success-glow)', color: 'var(--success)', background: 'rgba(16, 185, 129, 0.1)' }}>Celeb-DF v2</span>
-        </div>
+        <ul style={{ listStylePosition: 'inside', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          <li style={{ marginBottom: '0.5rem' }}><strong>Face Localization:</strong> Automated face cascade detection locates facial regions and extracts the primary face with a 20% margin.</li>
+          <li style={{ marginBottom: '0.5rem' }}><strong>Standardized Normalization:</strong> Crops are resized to 224x224 RGB and normalized with mean/std parameters expected by the ViT backbone.</li>
+          <li><strong>Metadata Separation:</strong> EXIF metadata is extracted purely as informational forensics and never dictates the classification verdict.</li>
+        </ul>
       </div>
 
+      <div className="glass-panel" style={{ padding: '2.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <Cpu size={32} color="var(--success)" />
+          <h3 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Inference & Uncertainty Handling</h3>
+        </div>
+        <div style={{ color: 'var(--text-muted)', lineHeight: 1.7 }}>
+          <p style={{ marginBottom: '1rem' }}>
+            Model output logits are transformed via Softmax into calibrated class probabilities. RealNetra enforces a three-state classification policy:
+          </p>
+          <ol style={{ paddingLeft: '1.5rem' }}>
+            <li style={{ marginBottom: '0.5rem' }}><strong>REAL:</strong> Model fake probability is below 40% (high confidence in authentic media).</li>
+            <li style={{ marginBottom: '0.5rem' }}><strong>DEEPFAKE:</strong> Model fake probability exceeds 60% (clear manipulation signatures detected).</li>
+            <li><strong>UNCERTAIN:</strong> Borderline probabilities between 40% and 60% are flagged as uncertain to avoid false positives on ambiguous content.</li>
+          </ol>
+        </div>
+      </div>
     </div>
   );
 }
