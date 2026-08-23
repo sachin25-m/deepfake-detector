@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, ShieldAlert, ShieldCheck, Trash2, List } from 'lucide-react';
+import { Activity, ShieldAlert, ShieldCheck, Trash2, List, Search, Download } from 'lucide-react';
 
 export const INITIAL_HISTORY = [
   { id: 1, date: '2026-05-12 11:04', name: 'chatgpt_response.txt', result: 'AI GENERATED', confidence: 98.2 },
@@ -19,91 +19,146 @@ export default function Dashboard() {
     }
     return INITIAL_HISTORY;
   });
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
 
-  const displayedHistory = showAll ? history : history.slice(0, 4);
+  const filteredHistory = history.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.result.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const displayedHistory = showAll ? filteredHistory : filteredHistory.slice(0, 7);
 
   const clearHistory = () => {
-    if (window.confirm("Are you sure you want to clear all history?")) {
-      setHistory([]);
-      localStorage.setItem('scanHistory', JSON.stringify([]));
-    }
+    setHistory([]);
+    localStorage.setItem('scanHistory', JSON.stringify([]));
   };
 
+  const totalScans = history.length;
+  const deepfakeCount = history.filter(h => h.result === 'DEEPFAKE' || h.result === 'AI GENERATED').length;
+  const authenticCount = totalScans - deepfakeCount;
+
   return (
-    <div className="animate-slide-up" style={{ maxWidth: '1000px', margin: '0 auto', paddingTop: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '2.5rem', fontWeight: '700' }}>Analysis Dashboard</h2>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-secondary" style={{ padding: '0.75rem 1rem' }} onClick={() => setShowAll(!showAll)}>
-            <List size={18} /> {showAll ? 'Show Recent' : 'Show All'}
+    <div className="animate-slide-up" style={{ maxWidth: '1100px', margin: '0 auto', paddingTop: '1.5rem' }}>
+      
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: '800', letterSpacing: '-0.03em', marginBottom: '0.25rem' }}>
+            Analysis <span className="text-gradient">Dashboard & History</span>
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Historical scan audit trail & forensic evidence log</p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button className="btn btn-secondary" style={{ padding: '0.65rem 1.25rem', borderRadius: '100px', fontSize: '0.85rem' }} onClick={() => setShowAll(!showAll)}>
+            <List size={16} /> {showAll ? 'Show Recent' : 'Show All Logs'}
           </button>
-          <button className="btn" style={{ padding: '0.75rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)' }} onClick={clearHistory}>
-            <Trash2 size={18} /> Clear History
+          <button className="btn" style={{ padding: '0.65rem 1.25rem', borderRadius: '100px', fontSize: '0.85rem', background: 'rgba(255, 0, 60, 0.1)', color: 'var(--danger)', border: '1px solid rgba(255, 0, 60, 0.25)' }} onClick={clearHistory}>
+            <Trash2 size={16} /> Clear History
           </button>
         </div>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Activity size={32} color="var(--primary)" />
+      {/* KPI Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+        <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+          <div style={{ padding: '1rem', background: 'rgba(0, 240, 255, 0.1)', borderRadius: '16px', border: '1px solid var(--primary-glow)' }}>
+            <Activity size={28} color="var(--primary)" />
+          </div>
           <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Total Analyzed</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>128</h3>
+            <p style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Executed Scans</p>
+            <h3 className="mono" style={{ fontSize: '1.9rem', fontWeight: '800' }}>{totalScans}</h3>
           </div>
         </div>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <ShieldAlert size={32} color="var(--danger)" />
+
+        <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+          <div style={{ padding: '1rem', background: 'rgba(255, 0, 60, 0.1)', borderRadius: '16px', border: '1px solid var(--danger-glow)' }}>
+            <ShieldAlert size={28} color="var(--danger)" />
+          </div>
           <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Deepfakes Detected</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>34</h3>
+            <p style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Deepfakes Detected</p>
+            <h3 className="mono" style={{ fontSize: '1.9rem', fontWeight: '800', color: 'var(--danger)' }}>{deepfakeCount}</h3>
           </div>
         </div>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <ShieldCheck size={32} color="var(--success)" />
+
+        <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+          <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '16px', border: '1px solid var(--success-glow)' }}>
+            <ShieldCheck size={28} color="var(--success)" />
+          </div>
           <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Authentic Media</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>94</h3>
+            <p style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Authentic Verifications</p>
+            <h3 className="mono" style={{ fontSize: '1.9rem', fontWeight: '800', color: 'var(--success)' }}>{authenticCount}</h3>
           </div>
         </div>
       </div>
 
-      <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '1rem' }}>Recent Activity</h3>
-      <div className="glass-panel" style={{ overflow: 'hidden' }}>
+      {/* Search & Audit Log Table */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h3 style={{ fontSize: '1.35rem', fontWeight: '700' }}>Historical Audit Trail</h3>
+        
+        {/* Search Box */}
+        <div style={{ position: 'relative', width: '280px' }}>
+          <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }} />
+          <input 
+            type="text" 
+            placeholder="Search filename or verdict..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.55rem 1rem 0.55rem 2.5rem',
+              background: 'var(--btn-secondary-bg)',
+              border: '1px solid var(--glass-border)',
+              borderRadius: '100px',
+              color: 'var(--text-main)',
+              fontSize: '0.85rem',
+              outline: 'none'
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="glass-panel" style={{ overflow: 'hidden', borderRadius: '20px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid var(--glass-border)' }}>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Date</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>File Name</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Confidence</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Result</th>
+            <tr style={{ background: 'var(--btn-secondary-bg)', borderBottom: '1px solid var(--glass-border)' }}>
+              <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Timestamp</th>
+              <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>File Identifier</th>
+              <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confidence</th>
+              <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Verdict</th>
             </tr>
           </thead>
           <tbody>
             {displayedHistory.length === 0 ? (
               <tr>
-                <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No history available.</td>
+                <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No matching scan history records found.</td>
               </tr>
             ) : (
-              displayedHistory.map((item, idx) => (
-                <tr key={item.id} style={{ borderBottom: idx !== displayedHistory.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
-                  <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{item.date}</td>
-                <td style={{ padding: '1rem' }}>{item.name}</td>
-                <td style={{ padding: '1rem' }}>{item.confidence}%</td>
-                <td style={{ padding: '1rem' }}>
-                  <span style={{ 
-                    padding: '0.25rem 0.75rem', 
-                    borderRadius: '999px', 
-                    fontSize: '0.85rem', 
-                    fontWeight: 600,
-                    background: item.result === 'DEEPFAKE' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                    color: item.result === 'DEEPFAKE' ? 'var(--danger)' : 'var(--success)'
-                  }}>
-                    {item.result}
-                  </span>
-                </td>
-              </tr>
-              ))
+              displayedHistory.map((item, idx) => {
+                const isFake = item.result === 'DEEPFAKE' || item.result === 'AI GENERATED';
+                return (
+                  <tr key={item.id} style={{ borderBottom: idx !== displayedHistory.length - 1 ? '1px solid var(--glass-border)' : 'none', transition: 'background 0.2s' }}>
+                    <td className="mono" style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{item.date}</td>
+                    <td style={{ padding: '1rem 1.25rem', fontWeight: '500' }}>{item.name}</td>
+                    <td className="mono" style={{ padding: '1rem 1.25rem', fontWeight: '600' }}>{item.confidence}%</td>
+                    <td style={{ padding: '1rem 1.25rem' }}>
+                      <span style={{ 
+                        padding: '0.3rem 0.85rem', 
+                        borderRadius: '100px', 
+                        fontSize: '0.75rem', 
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        background: isFake ? 'rgba(255, 0, 60, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                        color: isFake ? 'var(--danger)' : 'var(--success)',
+                        border: `1px solid ${isFake ? 'rgba(255, 0, 60, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                      }}>
+                        {item.result}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
