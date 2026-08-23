@@ -3,6 +3,7 @@ import { UploadCloud, FileVideo, Image as ImageIcon, X, FileText, AlignLeft, Shi
 import Detector from '../components/Detector';
 import axios from 'axios';
 import { INITIAL_HISTORY } from './Dashboard';
+import { supabase } from '../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -75,6 +76,7 @@ export default function Upload() {
 
     setStatus('processing');
     setErrorMsg('');
+    const startTime = Date.now();
     
     try {
       let response;
@@ -82,12 +84,40 @@ export default function Upload() {
         const formData = new FormData();
         formData.append('file', file);
         response = await axios.post(`${API_BASE_URL}/api/detect`, formData);
+
+        // Upload the scanned file to Supabase Storage
+        if (file) {
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const filePath = `${Date.now()}-${safeFileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('deepfake-files')
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: file.type || undefined,
+            });
+
+          if (uploadError) {
+            console.error('Supabase Storage upload error:', uploadError);
+            throw new Error(
+              `File upload failed: ${uploadError.message}. Check the Storage policy for the "deepfake-files" bucket.`
+            );
+          }
+
+          console.log('File uploaded to Supabase Storage:', filePath);
+        }
+
       } else {
         response = await axios.post(`${API_BASE_URL}/api/detect-text`, { text: textInput }, {
           headers: { 'Content-Type': 'application/json' }
         });
       }
       
+      const elapsed = Date.now() - startTime;
+      const minAnimationTime = 3000;
+      const remainingTime = Math.max(0, minAnimationTime - elapsed);
+
       setTimeout(() => {
         setResult(response.data);
         setStatus('complete');
@@ -107,7 +137,7 @@ export default function Upload() {
         const updatedHistory = [newHistoryItem, ...currentHistory];
         localStorage.setItem('scanHistory', JSON.stringify(updatedHistory));
         
-      }, 4500);
+      }, remainingTime);
 
     } catch (err) {
       console.error(err);
@@ -125,7 +155,7 @@ export default function Upload() {
           </div>
         </div>
         <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '1rem', letterSpacing: '-0.02em' }}>Detection Hub</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1.125rem' }}>Securely scan media files or analyze text for AI generation footprints</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '1.125rem' }}>Deepfake & AI Authenticity Analysis powered by Vision Transformer (ViT) ML</p>
       </div>
 
       {status === 'idle' && (
