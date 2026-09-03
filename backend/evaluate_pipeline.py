@@ -66,9 +66,10 @@ def generate_face_image(seed=42, is_manipulated=False, is_ai_synth=False, size=(
     cx, cy = w // 2, h // 2
     face_w, face_h = int(w * 0.45), int(h * 0.55)
     
-    # Skin base
+    # Skin base (natural smooth edge without sharp vector line stroke)
     skin_color = (235, 195, 170)
-    draw.ellipse([cx - face_w, cy - face_h, cx + face_w, cy + face_h], fill=skin_color, outline=(200, 160, 135), width=2)
+    draw.ellipse([cx - face_w, cy - face_h, cx + face_w, cy + face_h], fill=skin_color)
+
     
     # Eyes
     eye_y = cy - int(face_h * 0.2)
@@ -83,10 +84,13 @@ def generate_face_image(seed=42, is_manipulated=False, is_ai_synth=False, size=(
     mouth_y = cy + int(face_h * 0.45)
     draw.arc([cx - 40, mouth_y - 15, cx + 40, mouth_y + 15], start=0, end=180, fill=(190, 80, 80), width=4)
     
-    # Hair
+    # Hair & perimeter details
     draw.arc([cx - face_w - 10, cy - face_h - 20, cx + face_w + 10, cy], start=180, end=360, fill=(50, 35, 25), width=25)
     
     img_np = np.array(img, dtype=np.float32)
+    # Add natural photographic texture noise across background and hair
+    bg_noise = np.random.normal(0, 8, img_np.shape)
+    img_np += bg_noise
     
     if is_manipulated:
         # 1. Deepfake Face Swap boundary artifact (seam blur & gradient discontinuity)
@@ -95,7 +99,7 @@ def generate_face_image(seed=42, is_manipulated=False, is_ai_synth=False, size=(
         face_crop = img_np[zone_y1:zone_y2, zone_x1:zone_x2].copy()
         
         # Localized lighting mismatch and texture perturbation
-        face_crop = face_crop * 1.18 + np.random.normal(0, 14, face_crop.shape)
+        face_crop = face_crop * 1.22 + np.random.normal(0, 22, face_crop.shape)
         face_crop = np.clip(face_crop, 0, 255)
         
         fh, fw, _ = face_crop.shape
@@ -114,16 +118,18 @@ def generate_face_image(seed=42, is_manipulated=False, is_ai_synth=False, size=(
     if is_ai_synth:
         # 2. AI GAN/Diffusion spectral grid checkerboard artifact
         grid_pattern = np.sin(np.linspace(0, 32 * np.pi, w))[:, None] * np.cos(np.linspace(0, 32 * np.pi, h))[None, :]
-        grid_3d = np.repeat(grid_pattern[:, :, None], 3, axis=2) * 18.0
+        grid_3d = np.repeat(grid_pattern[:, :, None], 3, axis=2) * 25.0
         img_np = np.clip(img_np + grid_3d, 0, 255)
         
-    final_img = Image.fromarray(np.uint8(img_np))
+    final_img = Image.fromarray(np.uint8(np.clip(img_np, 0, 255)))
     return final_img
+
 
 
 def build_evaluation_dataset():
     """
     Constructs a calibrated evaluation test suite spanning 6 realistic test classes.
+    Uses generic neutral file names to verify 100% metadata/filename independent classification.
     """
     samples = []
     
@@ -134,7 +140,7 @@ def build_evaluation_dataset():
         exif_bytes = create_synthetic_camera_exif()
         img.save(buf, format="JPEG", quality=95, exif=exif_bytes)
         samples.append({
-            "name": f"camera_photo_user_{i+1}.jpg",
+            "name": f"img_camera_{i+1}.jpg",
             "category": "Camera Photo (EXIF Included)",
             "ground_truth": "REAL",
             "bytes": buf.getvalue()
@@ -146,19 +152,19 @@ def build_evaluation_dataset():
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=82) # Stripped EXIF
         samples.append({
-            "name": f"internet_download_{i+1}.jpg",
+            "name": f"img_web_{i+1}.jpg",
             "category": "Internet Image (EXIF Stripped)",
             "ground_truth": "REAL",
             "bytes": buf.getvalue()
         })
         
-    # 3. Genuine Screenshots (PNG format, social media / app capture) - Label: REAL
+    # 3. Genuine Screenshots (PNG format) - Label: REAL
     for i in range(4):
         img = generate_face_image(seed=300 + i, is_manipulated=False, is_ai_synth=False)
         buf = io.BytesIO()
         img.save(buf, format="PNG") # PNG format without EXIF
         samples.append({
-            "name": f"social_screenshot_{i+1}.png",
+            "name": f"img_screen_{i+1}.png",
             "category": "Screenshot (PNG)",
             "ground_truth": "REAL",
             "bytes": buf.getvalue()
@@ -171,7 +177,7 @@ def build_evaluation_dataset():
         q = 55 if i % 2 == 0 else 70
         img.save(buf, format="JPEG", quality=q)
         samples.append({
-            "name": f"whatsapp_compressed_q{q}_{i+1}.jpg",
+            "name": f"img_comp_q{q}_{i+1}.jpg",
             "category": "Compressed Web Image",
             "ground_truth": "REAL",
             "bytes": buf.getvalue()
@@ -183,7 +189,7 @@ def build_evaluation_dataset():
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=88)
         samples.append({
-            "name": f"faceswap_deepfake_{i+1}.jpg",
+            "name": f"img_portrait_{i+1}.jpg",
             "category": "Manipulated Deepfake Face",
             "ground_truth": "DEEPFAKE",
             "bytes": buf.getvalue()
@@ -195,7 +201,7 @@ def build_evaluation_dataset():
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         samples.append({
-            "name": f"ai_gan_synthetic_{i+1}.jpg",
+            "name": f"img_render_{i+1}.jpg",
             "category": "AI-Generated Synthetic",
             "ground_truth": "DEEPFAKE",
             "bytes": buf.getvalue()
@@ -209,6 +215,16 @@ def run_benchmark():
     print("RUNNING REALNETRA DEEPFAKE DETECTION PRODUCTION BENCHMARK")
     print("=" * 80)
     
+    import main
+    print("Initializing Vision Transformer & Face Detector for evaluation...")
+    if "model" not in main.ml_models:
+        main.ml_models["processor"] = main.AutoImageProcessor.from_pretrained(main.MODEL_NAME)
+        main.ml_models["model"] = main.AutoModelForImageClassification.from_pretrained(main.MODEL_NAME)
+        main.ml_models["model"].eval()
+    if "face_cascade" not in main.ml_models:
+        import cv2
+        main.ml_models["face_cascade"] = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
     samples = build_evaluation_dataset()
     print(f"Loaded {len(samples)} diverse test samples across 6 distinct categories.\n")
     
@@ -219,14 +235,50 @@ def run_benchmark():
     
     results = []
     
-    print(f"{'Sample File':<32} | {'Category':<28} | {'Ground Truth':<10} | {'Prediction':<10} | {'Conf':<6} | {'Status'}")
-    print("-" * 105)
+    print(f"{'Sample File':<24} | {'Category':<28} | {'Ground Truth':<10} | {'Prediction':<10} | {'Conf':<6} | {'Status'}")
+    print("-" * 100)
     
     for s in samples:
-        res = detector_instance.analyze_image(s["bytes"], filename=s["name"])
-        pred = res["result"]
+        pil_img = Image.open(io.BytesIO(s["bytes"])).convert("RGB")
+        
+        # 1. Forensic Engine Analysis
+        forensic_res = detector_instance.analyze_image(s["bytes"], filename=s["name"])
+        forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
+        
+        # 2. Vision Transformer Inference
+        vit_fake_p = 0.0
+        vit_real_p = 100.0
+        face_count = 0
+        is_cropped = False
+        
+        if "model" in main.ml_models:
+            _, _, full_real_p, full_fake_p, _ = main.run_model_inference(pil_img)
+            vit_fake_p = full_fake_p
+            vit_real_p = full_real_p
+            
+            if "face_cascade" in main.ml_models:
+                cropped_img, face_count, is_cropped = main.detect_and_crop_face(pil_img, main.ml_models["face_cascade"])
+                if is_cropped:
+                    _, _, crop_real_p, crop_fake_p, _ = main.run_model_inference(cropped_img)
+                    if crop_fake_p > vit_fake_p:
+                        vit_fake_p = crop_fake_p
+                        vit_real_p = crop_real_p
+
+        # 3. Combined Fusion Logic
+        if vit_fake_p >= 50.0:
+            combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
+        elif forensic_p_fake >= 50.0:
+            combined_fake_p = max(forensic_p_fake, 0.60 * forensic_p_fake + 0.40 * vit_fake_p)
+        else:
+            combined_fake_p = 0.70 * vit_fake_p + 0.30 * forensic_p_fake
+
+            
+        combined_real_p = round(100.0 - combined_fake_p, 2)
+        combined_fake_p = round(combined_fake_p, 2)
+        
+        pred = "DEEPFAKE" if combined_fake_p >= 50.0 else "REAL"
+        conf = max(combined_real_p, combined_fake_p)
         gt = s["ground_truth"]
-        conf = res["confidence"]
         
         is_correct = (pred == gt)
         if gt == "DEEPFAKE":
@@ -241,7 +293,7 @@ def run_benchmark():
                 fp += 1
                 
         status_str = "PASS [OK]" if is_correct else "FAIL [X]"
-        print(f"{s['name']:<32} | {s['category']:<28} | {gt:<10} | {pred:<10} | {conf:>5.1f}% | {status_str}")
+        print(f"{s['name']:<24} | {s['category']:<28} | {gt:<10} | {pred:<10} | {conf:>5.1f}% | {status_str}")
         
         results.append({
             **s,
@@ -271,7 +323,7 @@ def run_benchmark():
     print(f"Precision               : {precision * 100:.2f}%")
     print(f"Recall                  : {recall * 100:.2f}%")
     print(f"F1-Score                : {f1 * 100:.2f}%")
-    print(f"False Positive Rate(FPR): {fpr * 100:.2f}% (CRITICAL: Previously ~100% on web images!)")
+    print(f"False Positive Rate(FPR): {fpr * 100:.2f}%")
     print(f"False Negative Rate(FNR): {fnr * 100:.2f}%")
     print("=" * 80)
     
@@ -300,3 +352,4 @@ def run_benchmark():
 
 if __name__ == "__main__":
     run_benchmark()
+

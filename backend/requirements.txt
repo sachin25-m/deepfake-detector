@@ -8,3 +8,5 @@ transformers
 timm
 huggingface-hub
 opencv-python<5
+scipy
+piexif

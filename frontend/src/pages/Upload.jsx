@@ -3,7 +3,7 @@ import { UploadCloud, FileVideo, Image as ImageIcon, X, FileText, AlignLeft, Shi
 import Detector from '../components/Detector';
 import axios from 'axios';
 import { INITIAL_HISTORY } from './Dashboard';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -85,29 +85,29 @@ export default function Upload() {
         formData.append('file', file);
         response = await axios.post(`${API_BASE_URL}/api/detect`, formData);
 
-        // Upload the scanned file to Supabase Storage
-        if (file) {
-          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const filePath = `${Date.now()}-${safeFileName}`;
+        // Upload the scanned file to Supabase Storage if configured (non-blocking)
+        if (file && isSupabaseConfigured) {
+          try {
+            const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const filePath = `${Date.now()}-${safeFileName}`;
 
-          const { error: uploadError } = await supabase.storage
-            .from('deepfake-files')
-            .upload(filePath, file, {
-              cacheControl: '3600',
-              upsert: false,
-              contentType: file.type || undefined,
-            });
+            const { error: uploadError } = await supabase.storage
+              .from('deepfake-files')
+              .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: file.type || undefined,
+              });
 
-          if (uploadError) {
-            console.error('Supabase Storage upload error:', uploadError);
-            throw new Error(
-              `File upload failed: ${uploadError.message}. Check the Storage policy for the "deepfake-files" bucket.`
-            );
+            if (uploadError) {
+              console.warn('Supabase Storage upload warning:', uploadError.message);
+            } else {
+              console.log('File uploaded to Supabase Storage:', filePath);
+            }
+          } catch (storageErr) {
+            console.warn('Supabase Storage upload exception:', storageErr);
           }
-
-          console.log('File uploaded to Supabase Storage:', filePath);
         }
-
       } else {
         response = await axios.post(`${API_BASE_URL}/api/detect-text`, { text: textInput }, {
           headers: { 'Content-Type': 'application/json' }

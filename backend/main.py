@@ -25,17 +25,23 @@ ml_models = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load ML models and Haar cascade on startup
-    print(f"Loading deepfake detection model: {MODEL_NAME}...")
-    processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-    model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
-    model.eval()
-    
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    
-    ml_models["processor"] = processor
-    ml_models["model"] = model
-    ml_models["face_cascade"] = face_cascade
-    print("Deepfake detection model and face cascade loaded successfully.")
+    try:
+        print(f"Loading deepfake detection model: {MODEL_NAME}...")
+        processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
+        model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+        model.eval()
+        ml_models["processor"] = processor
+        ml_models["model"] = model
+        print("Deepfake detection model loaded successfully.")
+    except Exception as e:
+        print(f"Warning: Could not load HuggingFace ViT model ({e}). Using forensic detector engine fallback.")
+        
+    try:
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        ml_models["face_cascade"] = face_cascade
+    except Exception as e:
+        print(f"Warning: Could not load OpenCV face cascade ({e}).")
+        
     yield
     ml_models.clear()
 
@@ -121,25 +127,32 @@ def run_model_inference(pil_image: Image.Image):
         outputs = model(**inputs)
         probs = F.softmax(outputs.logits, dim=-1)[0].tolist()
         
-    # Model config: 0: 'Real', 1: 'Fake'
-    real_prob = float(probs[0])
-    fake_prob = float(probs[1])
+    id2label = getattr(model.config, "id2label", {0: "Real", 1: "Fake"})
+    prob_map = {}
+    for idx, prob in enumerate(probs):
+        label_str = str(id2label.get(idx, idx)).upper()
+        prob_map[label_str] = float(prob)
+        
+    fake_prob = prob_map.get("FAKE", prob_map.get("DEEPFAKE", probs[1] if len(probs) > 1 else 0.0))
+    real_prob = prob_map.get("REAL", 1.0 - fake_prob)
     
-    # Uncertainty decision threshold band [0.40, 0.60]
-    if 0.40 <= fake_prob <= 0.60:
+    fake_p_100 = round(fake_prob * 100.0, 2)
+    real_p_100 = round(real_prob * 100.0, 2)
+    
+    if 45.0 <= fake_p_100 <= 55.0:
         verdict = "UNCERTAIN"
-        confidence = round(max(real_prob, fake_prob) * 100, 2)
+        confidence = round(max(real_p_100, fake_p_100), 2)
         explanation = "Model confidence is near the decision threshold. Artifact features are ambiguous for a definitive real/fake verdict."
-    elif fake_prob > 0.60:
+    elif fake_p_100 > 55.0:
         verdict = "DEEPFAKE"
-        confidence = round(fake_prob * 100, 2)
+        confidence = fake_p_100
         explanation = "Facial synthesis anomalies and digital manipulation boundaries detected by Vision Transformer."
     else:
         verdict = "REAL"
-        confidence = round(real_prob * 100, 2)
+        confidence = real_p_100
         explanation = "Natural facial feature distribution and authentic pixel coherence verified by Vision Transformer."
         
-    return verdict, confidence, round(real_prob * 100, 2), round(fake_prob * 100, 2), explanation
+    return verdict, confidence, real_p_100, fake_p_100, explanation
 
 @app.get("/")
 def read_root():
@@ -166,33 +179,101 @@ async def detect_media(file: UploadFile = File(...)):
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    # Attempt detection via detector_engine first
-    if detector_instance is not None:
-        try:
-            if is_image:
-                res = detector_instance.analyze_image(file_bytes, filename)
-            else:
-                res = detector_instance.analyze_video(file_bytes, filename)
-            res["filename"] = filename
-            res["type"] = content_type or ("image/jpeg" if is_image else "video/mp4")
-            return res
-        except Exception:
-            pass
-
     if is_image:
         try:
             pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to decode image: {str(e)}")
-        
-        # 1. EXIF Forensics (informational only)
+            
         exif_info = extract_image_exif(pil_image)
         
-        # 2. Face Detection & Cropping & ML Inference if models loaded
-        if "face_cascade" in ml_models and "model" in ml_models:
-            face_cascade = ml_models["face_cascade"]
-            cropped_image, face_count, is_cropped = detect_and_crop_face(pil_image, face_cascade)
-            verdict, confidence, real_prob, fake_prob, explanation = run_model_inference(cropped_image)
+        # 1. Multi-Modal Forensic Analysis (ELA, FFT, Boundary, MesoNet)
+        forensic_res = None
+        if detector_instance is not None:
+            try:
+                forensic_res = detector_instance.analyze_image(file_bytes, filename)
+            except Exception:
+                pass
+                
+        # 2. Vision Transformer Dual-Pass Inference (Full Image & Face Crop)
+        vit_fake_p = 0.0
+        vit_real_p = 100.0
+        face_count = 0
+        is_cropped = False
+        vit_explanation = ""
+        
+        if "model" in ml_models:
+            try:
+                # Pass 1: Full image ViT inference
+                _, _, full_real_p, full_fake_p, full_exp = run_model_inference(pil_image)
+                vit_fake_p = full_fake_p
+                vit_real_p = full_real_p
+                vit_explanation = full_exp
+                
+                # Pass 2: Face crop ViT inference if face detected
+                if "face_cascade" in ml_models:
+                    face_cascade = ml_models["face_cascade"]
+                    cropped_image, face_count, is_cropped = detect_and_crop_face(pil_image, face_cascade)
+                    if is_cropped:
+                        _, _, crop_real_p, crop_fake_p, crop_exp = run_model_inference(cropped_image)
+                        # Take the highest fake probability feature signal
+                        if crop_fake_p > vit_fake_p:
+                            vit_fake_p = crop_fake_p
+                            vit_real_p = crop_real_p
+                            vit_explanation = crop_exp
+            except Exception as e:
+                print(f"Error during ViT inference: {e}")
+
+        # 3. Multi-Modal Fusion: Combine ViT predictions with physical forensic suite
+        if forensic_res is not None:
+            forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
+            
+            # OR-logic signal enhancement:
+            # 1. If ViT model detects neural manipulation (>=50%), result is DEEPFAKE.
+            # 2. If Physical Forensics detects ELA/FFT/seam splicing (>=50%), result is DEEPFAKE.
+            # 3. If both signals are below 50%, result is REAL.
+            if vit_fake_p >= 50.0:
+                combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
+            elif forensic_p_fake >= 50.0:
+                combined_fake_p = max(forensic_p_fake, 0.60 * forensic_p_fake + 0.40 * vit_fake_p)
+            else:
+                combined_fake_p = 0.70 * vit_fake_p + 0.30 * forensic_p_fake
+                
+            combined_real_p = round(100.0 - combined_fake_p, 2)
+            combined_fake_p = round(combined_fake_p, 2)
+            
+            is_deepfake = bool(combined_fake_p >= 50.0)
+            confidence = max(combined_real_p, combined_fake_p)
+            verdict = "DEEPFAKE" if is_deepfake else "REAL"
+
+            
+            if face_count == 0:
+                exp = f"Vision Transformer & multi-modal FFT/ELA forensics evaluated global image structure."
+            elif is_deepfake:
+                exp = "Facial synthesis anomalies and digital manipulation boundaries detected by Vision Transformer & Forensic Engine."
+            else:
+                exp = "Natural facial features and authentic pixel coherence verified by Vision Transformer & Forensic Fusion."
+
+            return {
+                "filename": filename,
+                "type": content_type or "image/jpeg",
+                "result": verdict,
+                "confidence": confidence,
+                "details": {
+                    "model_used": f"Vision Transformer ({MODEL_NAME}) + Multi-Modal Forensic Fusion",
+                    "faces_detected": face_count,
+                    "face_crop_applied": is_cropped,
+                    "real_probability": combined_real_p,
+                    "fake_probability": combined_fake_p,
+                    "explanation": exp,
+                    "forensic_breakdown": forensic_res.get("details", {}).get("forensic_breakdown", {}),
+                    "metadata_forensics": exif_info
+                }
+            }
+            
+        # Fallback if forensic_res not available
+        if "model" in ml_models:
+            verdict, confidence, real_prob, fake_prob, explanation = run_model_inference(pil_image)
             return {
                 "filename": filename,
                 "type": content_type or "image/jpeg",
@@ -224,6 +305,7 @@ async def detect_media(file: UploadFile = File(...)):
                 "artifacts_found": 12 if is_fake else 0
             }
         }
+
     
     else:
         # Video Processing: Frame-by-Frame ViT ML Inference
