@@ -31,91 +31,133 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="animate-slide-up" style={{ maxWidth: '1000px', margin: '0 auto', paddingTop: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '2.5rem', fontWeight: '700' }}>Analysis Dashboard</h2>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-secondary" style={{ padding: '0.75rem 1rem' }} onClick={() => setShowAll(!showAll)}>
-            <List size={18} /> {showAll ? 'Show Recent' : 'Show All'}
-          </button>
-          <button className="btn" style={{ padding: '0.75rem 1rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.2)' }} onClick={clearHistory}>
-            <Trash2 size={18} /> Clear History
-          </button>
-        </div>
-      </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Activity size={32} color="var(--primary)" />
-          <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Total Analyzed</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>128</h3>
-          </div>
-        </div>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <ShieldAlert size={32} color="var(--danger)" />
-          <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Deepfakes Detected</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>34</h3>
-          </div>
-        </div>
-        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <ShieldCheck size={32} color="var(--success)" />
-          <div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Authentic Media</p>
-            <h3 style={{ fontSize: '1.8rem', fontWeight: '700' }}>94</h3>
-          </div>
-        </div>
-      </div>
+    <div className="page-wrapper">
+      <div className="page-overlay" />
 
-      <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '1rem' }}>Recent Activity</h3>
-      <div className="glass-panel" style={{ overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid var(--glass-border)' }}>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Date</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>File Name</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Confidence</th>
-              <th style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: '500' }}>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayedHistory.length === 0 ? (
-              <tr>
-                <td colSpan="4" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No history available.</td>
+      <div className="page-content animate-slide-up" style={{ maxWidth: '1020px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ fontSize: '2.8rem', fontWeight: '800', letterSpacing: '-0.03em', color: '#0b1329', textShadow: '0 1px 3px rgba(255, 255, 255, 0.9)' }}>
+              Analysis Dashboard
+            </h2>
+            <p style={{ color: '#334155', fontSize: '1.05rem', fontWeight: 600, marginTop: '0.25rem' }}>
+              Historical forensic records and detection statistics
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button 
+              className="glass-nav-pill" 
+              style={{ padding: '0.65rem 1.25rem', borderRadius: '100px', border: 'none', background: 'rgba(255, 255, 255, 0.75)', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#334155' }} 
+              onClick={() => setShowAll(!showAll)}
+            >
+              <List size={17} /> {showAll ? 'Show Recent' : 'Show All'}
+            </button>
+            <button 
+              style={{ padding: '0.65rem 1.25rem', borderRadius: '100px', background: 'rgba(239, 68, 68, 0.12)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.25)', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
+              onClick={clearHistory}
+            >
+              <Trash2 size={17} /> Clear History
+            </button>
+          </div>
+        </div>
+        
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
+          <div className="page-glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(0, 102, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0066FF' }}>
+              <Activity size={26} />
+            </div>
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>Total Analyzed</p>
+              <h3 style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--text-main)' }}>128</h3>
+            </div>
+          </div>
+
+          <div className="page-glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+              <ShieldAlert size={26} />
+            </div>
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>Deepfakes Detected</p>
+              <h3 style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--text-main)' }}>34</h3>
+            </div>
+          </div>
+
+          <div className="page-glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderRadius: '20px' }}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+              <ShieldCheck size={26} />
+            </div>
+            <div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>Authentic Media</p>
+              <h3 style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--text-main)' }}>94</h3>
+            </div>
+          </div>
+        </div>
+
+        <h3 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '1.25rem', color: 'var(--text-main)' }}>
+          Recent Activity
+        </h3>
+
+        <div className="page-glass-card" style={{ overflow: 'hidden', borderRadius: '24px', padding: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: 'rgba(0, 0, 0, 0.03)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                <th style={{ padding: '1.15rem 1.5rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</th>
+                <th style={{ padding: '1.15rem 1.5rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>File Name</th>
+                <th style={{ padding: '1.15rem 1.5rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confidence</th>
+                <th style={{ padding: '1.15rem 1.5rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Result</th>
               </tr>
-            ) : (
-              displayedHistory.map((item, idx) => (
-                <tr key={item.id} style={{ borderBottom: idx !== displayedHistory.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
-                  <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{item.date}</td>
-                <td style={{ padding: '1rem' }}>{item.name}</td>
-                <td style={{ padding: '1rem' }}>{item.confidence}%</td>
-                <td style={{ padding: '1rem' }}>
-                  <span style={{ 
-                    padding: '0.25rem 0.75rem', 
-                    borderRadius: '999px', 
-                    fontSize: '0.85rem', 
-                    fontWeight: 600,
-                    background: (item.result === 'DEEPFAKE' || item.result === 'AI GENERATED')
-                      ? 'rgba(239, 68, 68, 0.2)' 
-                      : (item.result === 'UNCERTAIN') 
-                        ? 'rgba(245, 158, 11, 0.2)' 
-                        : 'rgba(16, 185, 129, 0.2)',
-                    color: (item.result === 'DEEPFAKE' || item.result === 'AI GENERATED')
-                      ? 'var(--danger)' 
-                      : (item.result === 'UNCERTAIN') 
-                        ? 'var(--warning)' 
-                        : 'var(--success)'
-                  }}>
-                    {item.result}
-                  </span>
-                </td>
-              </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {displayedHistory.length === 0 ? (
+                <tr>
+                  <td colSpan="4" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 500 }}>No history available.</td>
+                </tr>
+              ) : (
+                displayedHistory.map((item, idx) => (
+                  <tr key={item.id} style={{ borderBottom: idx !== displayedHistory.length - 1 ? '1px solid rgba(0, 0, 0, 0.05)' : 'none' }}>
+                    <td style={{ padding: '1.15rem 1.5rem', color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.9rem' }}>{item.date}</td>
+                    <td style={{ padding: '1.15rem 1.5rem', fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{item.name}</td>
+                    <td style={{ padding: '1.15rem 1.5rem', fontWeight: 700, color: '#0066FF', fontSize: '0.95rem' }}>{item.confidence}%</td>
+                    <td style={{ padding: '1.15rem 1.5rem' }}>
+                      <span style={{ 
+                        padding: '0.35rem 0.85rem', 
+                        borderRadius: '100px', 
+                        fontSize: '0.78rem', 
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        display: 'inline-block',
+                        background: (item.result === 'DEEPFAKE' || item.result === 'AI GENERATED')
+                          ? '#FEE2E2' 
+                          : (item.result === 'UNCERTAIN') 
+                            ? '#FEF3C7' 
+                            : '#D1FAE5',
+                        color: (item.result === 'DEEPFAKE' || item.result === 'AI GENERATED')
+                          ? '#991B1B' 
+                          : (item.result === 'UNCERTAIN') 
+                            ? '#92400E' 
+                            : '#065F46'
+                      }}>
+                        {item.result}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Minimal Footer */}
+        <footer className="minimal-footer" style={{ marginTop: '3.5rem' }}>
+          <span>&copy; 2026 RealNetra. All rights reserved.</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            A safer digital tomorrow. <span style={{ display: 'inline-block', width: '20px', height: '2px', backgroundColor: 'currentColor', opacity: 0.6 }} />
+          </span>
+        </footer>
       </div>
     </div>
   );
 }
+

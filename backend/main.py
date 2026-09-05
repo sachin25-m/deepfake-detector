@@ -130,11 +130,15 @@ def run_model_inference(pil_image: Image.Image):
     id2label = getattr(model.config, "id2label", {0: "Real", 1: "Fake"})
     prob_map = {}
     for idx, prob in enumerate(probs):
-        label_str = str(id2label.get(idx, idx)).upper()
+        lbl = id2label.get(idx, idx)
+        if isinstance(lbl, str):
+            label_str = lbl.upper()
+        else:
+            label_str = f"LABEL_{lbl}"
         prob_map[label_str] = float(prob)
         
-    fake_prob = prob_map.get("FAKE", prob_map.get("DEEPFAKE", probs[1] if len(probs) > 1 else 0.0))
-    real_prob = prob_map.get("REAL", 1.0 - fake_prob)
+    fake_prob = prob_map.get("FAKE", prob_map.get("DEEPFAKE", prob_map.get("LABEL_1", probs[1] if len(probs) > 1 else 0.0)))
+    real_prob = prob_map.get("REAL", prob_map.get("LABEL_0", 1.0 - fake_prob))
     
     fake_p_100 = round(fake_prob * 100.0, 2)
     real_p_100 = round(real_prob * 100.0, 2)

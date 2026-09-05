@@ -21,20 +21,20 @@ export default function Upload() {
 
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.currentTarget.style.borderColor = 'var(--primary)';
-    e.currentTarget.style.background = 'rgba(0, 240, 255, 0.05)';
+    e.currentTarget.style.borderColor = '#0066FF';
+    e.currentTarget.style.background = 'rgba(0, 102, 255, 0.08)';
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
-    e.currentTarget.style.borderColor = 'var(--glass-border)';
-    e.currentTarget.style.background = 'var(--glass-bg)';
+    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.8)';
+    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    e.currentTarget.style.borderColor = 'var(--glass-border)';
-    e.currentTarget.style.background = 'var(--glass-bg)';
+    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.8)';
+    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.65)';
     if ((activeTab === 'image' || activeTab === 'video') && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFileSelected(e.dataTransfer.files[0]);
     }
@@ -147,165 +147,267 @@ export default function Upload() {
   };
 
   return (
-    <div className="animate-slide-up" style={{ maxWidth: '900px', margin: '0 auto', paddingTop: '2rem' }}>
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-          <div style={{ background: 'rgba(0, 240, 255, 0.1)', padding: '1rem', borderRadius: '50%', boxShadow: '0 0 20px var(--primary-glow)' }}>
-            <ShieldAlert size={36} color="var(--primary)" />
+    <div className="page-wrapper">
+      <div className="page-overlay" />
+
+      <div className="page-content animate-slide-up" style={{ maxWidth: '940px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+            <div style={{ 
+              background: 'rgba(0, 102, 255, 0.12)', 
+              padding: '1rem', 
+              borderRadius: '50%', 
+              boxShadow: '0 8px 25px rgba(0, 102, 255, 0.2)',
+              border: '1px solid rgba(0, 102, 255, 0.2)'
+            }}>
+              <ShieldAlert size={36} color="#0066FF" />
+            </div>
           </div>
+          <h2 style={{ fontSize: '2.8rem', fontWeight: '800', marginBottom: '0.75rem', letterSpacing: '-0.03em', color: '#0b1329', textShadow: '0 1px 3px rgba(255, 255, 255, 0.9)' }}>
+            Detection Hub
+          </h2>
+          <p style={{ color: '#334155', fontSize: '1.05rem', fontWeight: 600 }}>
+            Deepfake & AI Authenticity Analysis powered by Vision Transformer (ViT) ML
+          </p>
         </div>
-        <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '1rem', letterSpacing: '-0.02em' }}>Detection Hub</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '1.125rem' }}>Deepfake & AI Authenticity Analysis powered by Vision Transformer (ViT) ML</p>
-      </div>
 
-      {status === 'idle' && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
-          <button 
-            className={`btn ${activeTab === 'image' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '1rem 1.5rem', borderRadius: '100px' }}
-            onClick={() => { setActiveTab('image'); handleReset(); }}
-          >
-            <ImageIcon size={20} /> Image Scanner
-          </button>
-          <button 
-            className={`btn ${activeTab === 'video' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '1rem 1.5rem', borderRadius: '100px' }}
-            onClick={() => { setActiveTab('video'); handleReset(); }}
-          >
-            <FileVideo size={20} /> Video Scanner
-          </button>
-          <button 
-            className={`btn ${activeTab === 'text' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '1rem 1.5rem', borderRadius: '100px' }}
-            onClick={() => { setActiveTab('text'); handleReset(); }}
-          >
-            <AlignLeft size={20} /> Text Analyzer
-          </button>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="animate-slide-up" style={{ margin: '1rem 0', padding: '1.25rem', background: 'rgba(255, 0, 60, 0.1)', border: '1px solid var(--danger)', borderRadius: '12px', color: 'var(--text-main)', textAlign: 'center', fontWeight: '500' }}>
-          <span style={{ color: 'var(--danger)', marginRight: '0.5rem' }}>Error:</span>{errorMsg}
-        </div>
-      )}
-
-      {status === 'idle' && (activeTab === 'image' || activeTab === 'video') && !file && (
-        <div 
-          className="glass-panel"
-          style={{
-            border: '2px dashed var(--glass-border)',
-            padding: '5rem 2rem',
-            textAlign: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            background: 'var(--glass-bg)'
-          }}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'var(--primary)';
-            e.currentTarget.style.boxShadow = '0 0 30px var(--primary-glow)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--glass-border)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          <input 
-            type="file" 
-            style={{ display: 'none' }} 
-            ref={fileInputRef} 
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                handleFileSelected(e.target.files[0]);
-              }
-            }}
-            accept={activeTab === 'image' ? "image/*" : "video/*"}
-          />
-          <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.1), rgba(112, 0, 255, 0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem auto', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <UploadCloud size={48} color="var(--primary)" />
+        {status === 'idle' && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginBottom: '2.5rem', flexWrap: 'wrap' }}>
+            <button 
+              className="glass-nav-pill"
+              style={{
+                padding: '0.75rem 1.6rem',
+                borderRadius: '100px',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                transition: 'all 0.3s ease',
+                backgroundColor: activeTab === 'image' ? '#0066FF' : 'rgba(255, 255, 255, 0.75)',
+                color: activeTab === 'image' ? '#ffffff' : '#334155',
+                boxShadow: activeTab === 'image' ? '0 8px 25px rgba(0, 102, 255, 0.35)' : '0 4px 15px rgba(0, 0, 0, 0.05)'
+              }}
+              onClick={() => { setActiveTab('image'); handleReset(); }}
+            >
+              <ImageIcon size={18} /> Image Scanner
+            </button>
+            <button 
+              className="glass-nav-pill"
+              style={{
+                padding: '0.75rem 1.6rem',
+                borderRadius: '100px',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                transition: 'all 0.3s ease',
+                backgroundColor: activeTab === 'video' ? '#0066FF' : 'rgba(255, 255, 255, 0.75)',
+                color: activeTab === 'video' ? '#ffffff' : '#334155',
+                boxShadow: activeTab === 'video' ? '0 8px 25px rgba(0, 102, 255, 0.35)' : '0 4px 15px rgba(0, 0, 0, 0.05)'
+              }}
+              onClick={() => { setActiveTab('video'); handleReset(); }}
+            >
+              <FileVideo size={18} /> Video Scanner
+            </button>
+            <button 
+              className="glass-nav-pill"
+              style={{
+                padding: '0.75rem 1.6rem',
+                borderRadius: '100px',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                transition: 'all 0.3s ease',
+                backgroundColor: activeTab === 'text' ? '#0066FF' : 'rgba(255, 255, 255, 0.75)',
+                color: activeTab === 'text' ? '#ffffff' : '#334155',
+                boxShadow: activeTab === 'text' ? '0 8px 25px rgba(0, 102, 255, 0.35)' : '0 4px 15px rgba(0, 0, 0, 0.05)'
+              }}
+              onClick={() => { setActiveTab('text'); handleReset(); }}
+            >
+              <AlignLeft size={18} /> Text Analyzer
+            </button>
           </div>
-          <h3 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: '0.75rem', letterSpacing: '-0.02em' }}>Drag & drop {activeTab === 'image' ? 'an Image' : 'a Video'} here</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Accepts {activeTab === 'image' ? '.JPG, .PNG, .WEBP' : '.MP4, .MOV, .AVI, .HEVC'}</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '1rem' }}>or <span className="text-gradient" style={{cursor: 'pointer', fontWeight: '600'}}>click to browse</span> from your system</p>
-        </div>
-      )}
+        )}
 
-      {status === 'idle' && activeTab === 'text' && (
-        <div className="glass-panel" style={{ padding: '3rem' }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: '600', marginBottom: '1.5rem' }}>Paste Text Payload</h3>
-          <textarea
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            className="mono"
+        {errorMsg && (
+          <div className="animate-slide-up" style={{ margin: '1rem 0 2rem 0', padding: '1.25rem', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '16px', color: '#dc2626', textAlign: 'center', fontWeight: '600' }}>
+            <span style={{ fontWeight: '800', marginRight: '0.5rem' }}>Error:</span>{errorMsg}
+          </div>
+        )}
+
+        {status === 'idle' && (activeTab === 'image' || activeTab === 'video') && !file && (
+          <div 
+            className="page-glass-card"
             style={{
-              width: '100%',
-              height: '250px',
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: '12px',
-              padding: '1.5rem',
-              color: 'var(--text-main)',
-              resize: 'none',
-              marginBottom: '2rem',
-              fontSize: '1rem',
-              lineHeight: 1.6,
-              boxShadow: 'inset 0 4px 20px var(--glass-border)',
-              transition: 'border-color 0.3s'
+              border: '2px dashed rgba(0, 102, 255, 0.3)',
+              padding: '4.5rem 2rem',
+              textAlign: 'center',
+              cursor: 'pointer',
+              borderRadius: '24px',
+              transition: 'all 0.3s ease',
+              background: 'rgba(255, 255, 255, 0.7)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              boxShadow: '0 15px 35px rgba(0,0,0,0.06)'
             }}
-            onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
-            onBlur={(e) => e.target.style.borderColor = 'var(--glass-border)'}
-            placeholder="> Initialize scan sequence...&#10;> Awaiting input string for deep linguistic analysis..."
-          ></textarea>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button className="btn btn-primary animate-pulse-glow" style={{ fontSize: '1.125rem', padding: '1.25rem 3rem', borderRadius: '16px' }} onClick={startDetection} disabled={textInput.length < 10}>
-              Initiate Analysis Sequence
-            </button>
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <input 
+              type="file" 
+              style={{ display: 'none' }} 
+              ref={fileInputRef} 
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFileSelected(e.target.files[0]);
+                }
+              }}
+              accept={activeTab === 'image' ? "image/*" : "video/*"}
+            />
+            <div style={{ 
+              width: '90px', 
+              height: '90px', 
+              borderRadius: '50%', 
+              background: 'rgba(0, 102, 255, 0.1)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              margin: '0 auto 1.75rem auto',
+              border: '1px solid rgba(0, 102, 255, 0.2)'
+            }}>
+              <UploadCloud size={44} color="#0066FF" />
+            </div>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: '700', marginBottom: '0.5rem', letterSpacing: '-0.02em', color: '#0f172a' }}>
+              Drag & drop {activeTab === 'image' ? 'an Image' : 'a Video'} here
+            </h3>
+            <p style={{ color: '#475569', fontSize: '1.05rem', fontWeight: 500 }}>
+              Accepts {activeTab === 'image' ? '.JPG, .PNG, .WEBP' : '.MP4, .MOV, .AVI, .HEVC'}
+            </p>
+            <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '1.25rem' }}>
+              or <span style={{ color: '#0066FF', fontWeight: '700', textDecoration: 'underline' }}>click to browse</span> from your system
+            </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {file && status === 'idle' && (activeTab === 'image' || activeTab === 'video') && (
-        <div className="glass-panel animate-slide-up" style={{ padding: '3rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-            <h3 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Target Acquired</h3>
-            <button onClick={handleReset} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', padding: '0.5rem', borderRadius: '50%', display: 'flex', transition: 'all 0.2s' }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 0, 60, 0.2)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-              <X size={20} />
-            </button>
+        {status === 'idle' && activeTab === 'text' && (
+          <div className="page-glass-card" style={{ padding: '2.5rem', borderRadius: '24px' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: '700', marginBottom: '1.25rem', color: 'var(--text-main)' }}>
+              Paste Text Payload
+            </h3>
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              className="mono"
+              style={{
+                width: '100%',
+                height: '220px',
+                background: 'rgba(255, 255, 255, 0.85)',
+                border: '1px solid rgba(0, 0, 0, 0.1)',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                color: '#0f172a',
+                resize: 'none',
+                marginBottom: '1.75rem',
+                fontSize: '0.95rem',
+                lineHeight: 1.6,
+                boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.04)',
+                outline: 'none'
+              }}
+              placeholder="> Initialize scan sequence...&#10;> Awaiting input string for deep linguistic analysis..."
+            />
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button 
+                className="cta-button-start" 
+                style={{ fontSize: '1.05rem', padding: '1rem 3rem', borderRadius: '14px' }} 
+                onClick={startDetection} 
+                disabled={textInput.length < 10}
+              >
+                Initiate Analysis Sequence
+              </button>
+            </div>
           </div>
-          
-          <div style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid var(--glass-border)', borderRadius: '16px', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: '2.5rem', boxShadow: 'inset 0 10px 30px rgba(0,0,0,0.5)' }}>
-            {file.type.startsWith('video/') ? (
-              <video src={preview} controls style={{ maxHeight: '100%', maxWidth: '100%' }} />
-            ) : (
-              <img src={preview} alt="Preview" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-            )}
-          </div>
+        )}
 
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button className="btn btn-primary animate-pulse-glow" style={{ fontSize: '1.125rem', padding: '1.25rem 4rem', borderRadius: '16px' }} onClick={startDetection}>
-              Run Neural Scan
-            </button>
-          </div>
-        </div>
-      )}
+        {file && status === 'idle' && (activeTab === 'image' || activeTab === 'video') && (
+          <div className="page-glass-card animate-slide-up" style={{ padding: '2.5rem', borderRadius: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
+              <h3 style={{ fontSize: '1.4rem', fontWeight: '700', color: 'var(--text-main)' }}>Target Acquired</h3>
+              <button 
+                onClick={handleReset} 
+                style={{ 
+                  background: 'rgba(239, 68, 68, 0.1)', 
+                  border: '1px solid rgba(239, 68, 68, 0.2)', 
+                  color: '#dc2626', 
+                  cursor: 'pointer', 
+                  padding: '0.5rem', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  transition: 'all 0.2s' 
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ 
+              background: '#04070d', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              borderRadius: '18px', 
+              height: '380px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              overflow: 'hidden', 
+              marginBottom: '2rem', 
+              boxShadow: 'inset 0 10px 30px rgba(0,0,0,0.5)' 
+            }}>
+              {file.type.startsWith('video/') ? (
+                <video src={preview} controls style={{ maxHeight: '100%', maxWidth: '100%' }} />
+              ) : (
+                <img src={preview} alt="Preview" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+              )}
+            </div>
 
-      {(status === 'processing' || status === 'complete') && (
-        <Detector 
-          file={file} 
-          previewUrl={preview} 
-          textSnippet={textInput}
-          mode={activeTab === 'text' ? 'text' : 'media'}
-          status={status} 
-          result={result} 
-          resetView={handleReset} 
-        />
-      )}
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button className="cta-button-start" style={{ fontSize: '1.05rem', padding: '1rem 3.5rem', borderRadius: '14px' }} onClick={startDetection}>
+                Run Neural Scan
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(status === 'processing' || status === 'complete') && (
+          <Detector 
+            file={file} 
+            previewUrl={preview} 
+            textSnippet={textInput}
+            mode={activeTab === 'text' ? 'text' : 'media'}
+            status={status} 
+            result={result} 
+            resetView={handleReset} 
+          />
+        )}
+
+        {/* Minimal Footer */}
+        <footer className="minimal-footer" style={{ marginTop: '3.5rem' }}>
+          <span>&copy; 2026 RealNetra. All rights reserved.</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            A safer digital tomorrow. <span style={{ display: 'inline-block', width: '20px', height: '2px', backgroundColor: 'currentColor', opacity: 0.6 }} />
+          </span>
+        </footer>
+      </div>
     </div>
   );
-}
+}

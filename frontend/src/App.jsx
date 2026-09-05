@@ -10,7 +10,7 @@ function App() {
   return (
     <Router>
       <Navbar />
-      <main className="container" style={{ paddingTop: '100px', paddingBottom: '40px' }}>
+      <main style={{ width: '100%', minHeight: '100vh' }}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/upload" element={<UploadPage />} />
