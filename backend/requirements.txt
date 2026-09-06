@@ -3,10 +3,8 @@ uvicorn
 python-multipart
 pillow
 torch
-torchvision
 transformers
-timm
 huggingface-hub
-opencv-python<5
+opencv-python-headless<5
 scipy
 piexif

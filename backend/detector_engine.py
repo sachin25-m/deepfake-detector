@@ -15,6 +15,7 @@ Components:
 
 import io
 import os
+import gc
 import math
 import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter
@@ -22,6 +23,11 @@ from scipy import ndimage
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+torch.set_num_threads(1)
+
 
 
 # -------------------------------------------------------------------------
@@ -386,7 +392,7 @@ class ForensicAnalyzer:
         
         # 2. Neural MesoNet Feature Analysis
         tensor_input, face_crop = self.extract_face_roi(pil_img, primary_face)
-        with torch.no_grad():
+        with torch.inference_mode():
             nn_pred = float(self.meso_model(tensor_input).item())
             
         # 3. Localized Error Level Analysis (ELA)
@@ -425,7 +431,7 @@ class ForensicAnalyzer:
         if is_deepfake and artifacts_count == 0:
             artifacts_count = 2
             
-        return {
+        res = {
             "result": "DEEPFAKE" if is_deepfake else "REAL",
             "confidence": confidence,
             "probability_deepfake": round(float(ensemble_p), 4),
@@ -442,6 +448,9 @@ class ForensicAnalyzer:
                 }
             }
         }
+        gc.collect()
+        return res
+
 
     def analyze_video(self, video_bytes: bytes, filename: str = ""):
         """

@@ -132,9 +132,12 @@ Vision Transformer Model in Memory (PyTorch)
 ```
 
 *   **Frontend**: Deployed to Vercel. Set `VITE_API_URL` environment variable to your deployed FastAPI backend URL.
-*   **Backend**: Deployed as a standard Docker container or Python service on Render, Railway, Fly.io, or AWS.
+*   **Backend**: Deployed on Render using the included `render.yaml` Blueprint:
+    *   **Build Command**: `pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r backend/requirements.txt`
+    *   **Start Command**: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
 
 ---
+
 
 ## ⚡ Getting Started (Local Development)
 

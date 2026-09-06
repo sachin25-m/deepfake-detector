@@ -1,6 +1,14 @@
 import io
 import os
+import gc
 import tempfile
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+
 import numpy as np
 from PIL import Image, ExifTags
 import cv2
@@ -11,6 +19,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+torch.set_num_threads(1)
+
 
 MODEL_NAME = "dima806/deepfake_vs_real_image_detection"
 
@@ -42,8 +53,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning: Could not load OpenCV face cascade ({e}).")
         
+    gc.collect()
     yield
     ml_models.clear()
+    gc.collect()
+
 
 app = FastAPI(title="RealNetra Deepfake Detection API", lifespan=lifespan)
 
@@ -123,9 +137,10 @@ def run_model_inference(pil_image: Image.Image):
     model = ml_models["model"]
     
     inputs = processor(images=pil_image, return_tensors="pt")
-    with torch.no_grad():
+    with torch.inference_mode():
         outputs = model(**inputs)
         probs = F.softmax(outputs.logits, dim=-1)[0].tolist()
+
         
     id2label = getattr(model.config, "id2label", {0: "Real", 1: "Fake"})
     prob_map = {}
