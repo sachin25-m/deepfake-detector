@@ -116,7 +116,7 @@ export default function Upload() {
         const formData = new FormData();
         formData.append('file', file);
         response = await axios.post(`${API_BASE_URL}/api/detect`, formData, {
-          timeout: 45000,
+          timeout: 120000,
           headers: { 'Content-Type': 'multipart/form-data' }
         });
 
