@@ -407,26 +407,27 @@ async def detect_media(file: UploadFile = File(...)):
                 print(f"Error during ViT inference: {e}")
 
         # 3. Multi-Modal Fusion: Combine ViT predictions with physical forensic suite
+        # 3. Multi-Modal Fusion: ViT Model as Primary Classifier (85%), Physical Forensics as Secondary Signal (15%)
         if forensic_res is not None:
             forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
             
-            # OR-logic signal enhancement:
-            # 1. If ViT model detects neural manipulation (>=50%), result is DEEPFAKE.
-            # 2. If Physical Forensics detects ELA/FFT/seam splicing (>=50%), result is DEEPFAKE.
-            # 3. If both signals are below 50%, result is REAL.
-            if vit_fake_p >= 50.0:
-                combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
-            elif forensic_p_fake >= 50.0:
-                combined_fake_p = max(forensic_p_fake, 0.60 * forensic_p_fake + 0.40 * vit_fake_p)
-            else:
-                combined_fake_p = 0.70 * vit_fake_p + 0.30 * forensic_p_fake
-                
-            combined_real_p = round(100.0 - combined_fake_p, 2)
-            combined_fake_p = round(combined_fake_p, 2)
+            # Primary ViT signal (85%) + Secondary Physical Forensics (15%)
+            combined_fake_p = 0.85 * vit_fake_p + 0.15 * forensic_p_fake
             
-            is_deepfake = bool(combined_fake_p >= 50.0)
-            confidence = max(combined_real_p, combined_fake_p)
-            verdict = "DEEPFAKE" if is_deepfake else "REAL"
+            # Guard condition: Secondary physical heuristics must NOT override a strong ViT model prediction
+            if vit_fake_p < 35.0: # Strongly Real
+                combined_fake_p = min(combined_fake_p, 48.0)
+            elif vit_fake_p > 65.0: # Strongly Fake
+                combined_fake_p = max(combined_fake_p, 52.0)
+        else:
+            combined_fake_p = vit_fake_p
+                
+        combined_real_p = round(100.0 - combined_fake_p, 2)
+        combined_fake_p = round(combined_fake_p, 2)
+        
+        is_deepfake = bool(combined_fake_p >= 50.0)
+        confidence = max(combined_real_p, combined_fake_p)
+        verdict = "DEEPFAKE" if is_deepfake else "REAL"
 
             
             if face_count == 0:
