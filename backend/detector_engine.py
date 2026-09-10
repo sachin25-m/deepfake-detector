@@ -119,25 +119,91 @@ class ForensicAnalyzer:
             else:
                 gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
                 
+            faces = []
+
+            def run_detection(cas, img, scale_factor=1.08, min_neighbors=3):
+                try:
+                    return cas.detectMultiScale(img, scaleFactor=scale_factor, minNeighbors=min_neighbors, minSize=(30, 30))
+                except Exception:
+                    return ()
+
+            # Pass 1: Frontal default cascade
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
+            res = run_detection(face_cascade, gray, scale_factor=1.08, min_neighbors=4)
+            if len(res) > 0:
+                faces = list(res)
             
-            # Pass 1: Frontal face on raw gray with minSize=(30, 30)
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=4, minSize=(30, 30))
-            
-            # Pass 2: CLAHE adaptive contrast equalization if 0 faces found
+            # Pass 2: Frontal Alt2 cascade for angled/tilted faces
+            if len(faces) == 0:
+                try:
+                    alt2_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
+                    if not alt2_cascade.empty():
+                        res = run_detection(alt2_cascade, gray, scale_factor=1.08, min_neighbors=3)
+                        if len(res) > 0:
+                            faces = list(res)
+                except Exception:
+                    pass
+
+            # Pass 3: Profile cascade for left-facing profile faces
+            profile_cascade = None
+            if len(faces) == 0:
+                try:
+                    profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
+                    if not profile_cascade.empty():
+                        res = run_detection(profile_cascade, gray, scale_factor=1.08, min_neighbors=3)
+                        if len(res) > 0:
+                            faces = list(res)
+                except Exception:
+                    pass
+
+            # Pass 4: Profile cascade for right-facing profile faces (horizontally flipped gray)
+            if len(faces) == 0:
+                try:
+                    if profile_cascade is None or profile_cascade.empty():
+                        profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
+                    if not profile_cascade.empty():
+                        flipped_gray = cv2.flip(gray, 1)
+                        res = run_detection(profile_cascade, flipped_gray, scale_factor=1.08, min_neighbors=3)
+                        if len(res) > 0:
+                            w_img = gray.shape[1]
+                            for (x, y, w, h) in res:
+                                real_x = w_img - (x + w)
+                                faces.append((real_x, y, w, h))
+                except Exception:
+                    pass
+
+            # Pass 5: CLAHE adaptive contrast equalization fallback
             if len(faces) == 0:
                 try:
                     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                     equalized_gray = clahe.apply(gray)
-                    faces = face_cascade.detectMultiScale(equalized_gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+                    
+                    res = run_detection(face_cascade, equalized_gray, scale_factor=1.05, min_neighbors=3)
+                    if len(res) > 0:
+                        faces = list(res)
+
+                    if len(faces) == 0:
+                        alt2_cas = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
+                        if not alt2_cas.empty():
+                            res = run_detection(alt2_cas, equalized_gray, scale_factor=1.05, min_neighbors=3)
+                            if len(res) > 0:
+                                faces = list(res)
+
+                    if len(faces) == 0 and profile_cascade and not profile_cascade.empty():
+                        res = run_detection(profile_cascade, equalized_gray, scale_factor=1.05, min_neighbors=3)
+                        if len(res) > 0:
+                            faces = list(res)
+                        else:
+                            flipped_eq = cv2.flip(equalized_gray, 1)
+                            res = run_detection(profile_cascade, flipped_eq, scale_factor=1.05, min_neighbors=3)
+                            if len(res) > 0:
+                                w_img = gray.shape[1]
+                                for (x, y, w, h) in res:
+                                    real_x = w_img - (x + w)
+                                    faces.append((real_x, y, w, h))
                 except Exception:
                     pass
 
-            # Pass 3: Profile face cascade for angled faces if 0 faces found
-            if len(faces) == 0 and not profile_cascade.empty():
-                faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
-                
             if len(faces) > 0:
                 return [tuple(map(int, f)) for f in faces]
         except Exception:
