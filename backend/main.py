@@ -92,6 +92,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def merge_and_deduplicate_faces(faces, iou_threshold=0.3):
+    """
+    Applies Non-Maximum Suppression (NMS) to merge overlapping face bounding boxes
+    from multiple detection passes into single distinct face detections.
+    """
+    if not faces:
+        return []
+    rects = []
+    for f in faces:
+        rects.append([int(f[0]), int(f[1]), int(f[2]), int(f[3])])
+    
+    boxes = np.array([[r[0], r[1], r[0] + r[2], r[1] + r[3]] for r in rects], dtype=np.float32)
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    areas = (x2 - x1) * (y2 - y1)
+    
+    order = areas.argsort()[::-1]
+    keep = []
+    
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+        
+        xx1 = np.maximum(x1[i], x1[order[1:]])
+        yy1 = np.maximum(y1[i], y1[order[1:]])
+        xx2 = np.minimum(x2[i], x2[order[1:]])
+        yy2 = np.minimum(y2[i], y2[order[1:]])
+        
+        w = np.maximum(0.0, xx2 - xx1)
+        h = np.maximum(0.0, yy2 - yy1)
+        inter = w * h
+        
+        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        inds = np.where(ovr <= iou_threshold)[0]
+        order = order[inds + 1]
+        
+    return [rects[k] for k in keep]
+
 def detect_and_crop_face(pil_image: Image.Image, face_cascade):
     """
     Detects faces in the image using enhanced multi-stage OpenCV Haar Cascade pipeline:
@@ -194,6 +234,8 @@ def detect_and_crop_face(pil_image: Image.Image, face_cascade):
         except Exception:
             pass
 
+    # Merge overlapping boxes across multi-pass detections
+    faces = merge_and_deduplicate_faces(faces)
     face_count = len(faces)
     
     if face_count > 0:
@@ -342,7 +384,7 @@ async def detect_media(file: UploadFile = File(...)):
             except Exception:
                 pass
                 
-        # 2. Vision Transformer Dual-Pass Inference (Full Image & Face Crop)
+        # 2. Vision Transformer Inference (Full Image) & Auxiliary Face Localization
         vit_fake_p = 0.0
         vit_real_p = 100.0
         face_count = 0
@@ -351,23 +393,16 @@ async def detect_media(file: UploadFile = File(...)):
         
         if "model" in ml_models:
             try:
-                # Pass 1: Full image ViT inference
+                # Primary ViT model inference evaluates full un-distorted image
                 _, _, full_real_p, full_fake_p, full_exp = run_model_inference(pil_image)
                 vit_fake_p = full_fake_p
                 vit_real_p = full_real_p
                 vit_explanation = full_exp
                 
-                # Pass 2: Face crop ViT inference if face detected
+                # Face localization auxiliary pass (bounding box count & crop metadata)
                 if "face_cascade" in ml_models:
                     face_cascade = ml_models["face_cascade"]
                     cropped_image, face_count, is_cropped = detect_and_crop_face(pil_image, face_cascade)
-                    if is_cropped:
-                        _, _, crop_real_p, crop_fake_p, crop_exp = run_model_inference(cropped_image)
-                        # Take the highest fake probability feature signal
-                        if crop_fake_p > vit_fake_p:
-                            vit_fake_p = crop_fake_p
-                            vit_real_p = crop_real_p
-                            vit_explanation = crop_exp
             except Exception as e:
                 print(f"Error during ViT inference: {e}")
 
