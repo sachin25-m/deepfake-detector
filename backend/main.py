@@ -24,6 +24,12 @@ torch.set_num_threads(1)
 
 
 MODEL_NAME = "dima806/deepfake_vs_real_image_detection"
+LOCAL_MODEL_DIR = os.getenv(
+    "MODEL_PATH",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned"))
+)
+if not os.path.exists(LOCAL_MODEL_DIR):
+    LOCAL_MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "model", "realnetra_vit_finetuned"))
 
 try:
     from detector_engine import detector_instance
@@ -37,15 +43,23 @@ ml_models = {}
 async def lifespan(app: FastAPI):
     # Load ML models and Haar cascade on startup
     try:
-        print(f"Loading deepfake detection model: {MODEL_NAME}...")
-        processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-        model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+        if os.path.exists(LOCAL_MODEL_DIR) and os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")):
+            print(f"Loading fine-tuned ViT model from local path: {LOCAL_MODEL_DIR}...")
+            processor = AutoImageProcessor.from_pretrained(LOCAL_MODEL_DIR)
+            model = AutoModelForImageClassification.from_pretrained(LOCAL_MODEL_DIR)
+            ml_models["model_source"] = "Fine-Tuned ViT (140K Real & Fake Faces Dataset)"
+        else:
+            print(f"Loading HuggingFace ViT model fallback: {MODEL_NAME}...")
+            processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
+            model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+            ml_models["model_source"] = f"Vision Transformer ({MODEL_NAME})"
+            
         model.eval()
         ml_models["processor"] = processor
         ml_models["model"] = model
         print("Deepfake detection model loaded successfully.")
     except Exception as e:
-        print(f"Warning: Could not load HuggingFace ViT model ({e}). Using forensic detector engine fallback.")
+        print(f"Warning: Could not load ViT model ({e}). Using forensic detector engine fallback.")
         
     try:
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -131,30 +145,31 @@ def extract_image_exif(pil_image: Image.Image) -> dict:
 def run_model_inference(pil_image: Image.Image):
     """
     Runs actual Vision Transformer model inference on the provided image/crop.
+    Strict label mapping: 0 = Real, 1 = Fake.
     Returns: (verdict, confidence, real_prob, fake_prob, explanation)
     """
     processor = ml_models["processor"]
     model = ml_models["model"]
     
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+        
     inputs = processor(images=pil_image, return_tensors="pt")
     with torch.inference_mode():
         outputs = model(**inputs)
         probs = F.softmax(outputs.logits, dim=-1)[0].tolist()
 
-        
+    # Exact label mapping according to fine-tuned model:
+    # 0 = Real, 1 = Fake
+    real_prob = float(probs[0])
+    fake_prob = float(probs[1]) if len(probs) > 1 else (1.0 - real_prob)
+
+    # Double check id2label config if explicitly inverted by third-party configs
     id2label = getattr(model.config, "id2label", {0: "Real", 1: "Fake"})
-    prob_map = {}
-    for idx, prob in enumerate(probs):
-        lbl = id2label.get(idx, idx)
-        if isinstance(lbl, str):
-            label_str = lbl.upper()
-        else:
-            label_str = f"LABEL_{lbl}"
-        prob_map[label_str] = float(prob)
-        
-    fake_prob = prob_map.get("FAKE", prob_map.get("DEEPFAKE", prob_map.get("LABEL_1", probs[1] if len(probs) > 1 else 0.0)))
-    real_prob = prob_map.get("REAL", prob_map.get("LABEL_0", 1.0 - fake_prob))
-    
+    lbl_0 = str(id2label.get(0, id2label.get("0", "Real"))).upper()
+    if "FAKE" in lbl_0:
+        real_prob, fake_prob = fake_prob, real_prob
+
     fake_p_100 = round(fake_prob * 100.0, 2)
     real_p_100 = round(real_prob * 100.0, 2)
     
@@ -165,11 +180,11 @@ def run_model_inference(pil_image: Image.Image):
     elif fake_p_100 > 55.0:
         verdict = "DEEPFAKE"
         confidence = fake_p_100
-        explanation = "Facial synthesis anomalies and digital manipulation boundaries detected by Vision Transformer."
+        explanation = "Facial synthesis anomalies and digital manipulation boundaries detected by fine-tuned Vision Transformer."
     else:
         verdict = "REAL"
         confidence = real_p_100
-        explanation = "Natural facial feature distribution and authentic pixel coherence verified by Vision Transformer."
+        explanation = "Natural facial feature distribution and authentic pixel coherence verified by fine-tuned Vision Transformer."
         
     return verdict, confidence, real_p_100, fake_p_100, explanation
 
@@ -273,13 +288,14 @@ async def detect_media(file: UploadFile = File(...)):
             else:
                 exp = "Natural facial features and authentic pixel coherence verified by Vision Transformer & Forensic Fusion."
 
+            model_source = ml_models.get("model_source", "Fine-Tuned ViT")
             return {
                 "filename": filename,
                 "type": content_type or "image/jpeg",
                 "result": verdict,
                 "confidence": confidence,
                 "details": {
-                    "model_used": f"Vision Transformer ({MODEL_NAME}) + Multi-Modal Forensic Fusion",
+                    "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
                     "faces_detected": face_count,
                     "face_crop_applied": is_cropped,
                     "real_probability": combined_real_p,
@@ -293,13 +309,14 @@ async def detect_media(file: UploadFile = File(...)):
         # Fallback if forensic_res not available
         if "model" in ml_models:
             verdict, confidence, real_prob, fake_prob, explanation = run_model_inference(pil_image)
+            model_source = ml_models.get("model_source", "Fine-Tuned ViT")
             return {
                 "filename": filename,
                 "type": content_type or "image/jpeg",
                 "result": verdict,
                 "confidence": confidence,
                 "details": {
-                    "model_used": f"Vision Transformer ({MODEL_NAME})",
+                    "model_used": model_source,
                     "faces_detected": face_count,
                     "face_crop_applied": is_cropped,
                     "real_probability": real_prob,

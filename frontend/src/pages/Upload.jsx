@@ -41,14 +41,46 @@ export default function Upload() {
   };
 
   const handleFileSelected = (selectedFile) => {
-    if (activeTab === 'image' && !selectedFile.type.startsWith('image/')) {
-      setErrorMsg('Please upload a valid image file.');
+    if (!selectedFile) return;
+
+    if (selectedFile.size === 0) {
+      setErrorMsg('Selected file is empty.');
       return;
     }
-    if (activeTab === 'video' && !selectedFile.type.startsWith('video/')) {
-      setErrorMsg('Please upload a valid video file.');
-      return;
+
+    if (activeTab === 'image') {
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'image/tiff'];
+      const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'];
+      const fileNameLower = selectedFile.name.toLowerCase();
+      const isValidExt = validExts.some(ext => fileNameLower.endsWith(ext));
+      const isValidType = selectedFile.type ? selectedFile.type.startsWith('image/') : isValidExt;
+
+      if (!isValidType && !isValidExt) {
+        setErrorMsg('Please upload a valid image file (.JPG, .PNG, .WEBP).');
+        return;
+      }
+      if (selectedFile.size > 25 * 1024 * 1024) {
+        setErrorMsg('Image file size exceeds maximum limit of 25MB.');
+        return;
+      }
     }
+
+    if (activeTab === 'video') {
+      const validExts = ['.mp4', '.mov', '.avi', '.hevc', '.mkv', '.webm'];
+      const fileNameLower = selectedFile.name.toLowerCase();
+      const isValidExt = validExts.some(ext => fileNameLower.endsWith(ext));
+      const isValidType = selectedFile.type ? selectedFile.type.startsWith('video/') : isValidExt;
+
+      if (!isValidType && !isValidExt) {
+        setErrorMsg('Please upload a valid video file (.MP4, .MOV, .AVI, .WEBM).');
+        return;
+      }
+      if (selectedFile.size > 100 * 1024 * 1024) {
+        setErrorMsg('Video file size exceeds maximum limit of 100MB.');
+        return;
+      }
+    }
+
     setErrorMsg('');
     setFile(selectedFile);
     setStatus('idle');
@@ -83,7 +115,10 @@ export default function Upload() {
       if (activeTab === 'image' || activeTab === 'video') {
         const formData = new FormData();
         formData.append('file', file);
-        response = await axios.post(`${API_BASE_URL}/api/detect`, formData);
+        response = await axios.post(`${API_BASE_URL}/api/detect`, formData, {
+          timeout: 45000,
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
 
         // Upload the scanned file to Supabase Storage if configured (non-blocking)
         if (file && isSupabaseConfigured) {
@@ -110,12 +145,13 @@ export default function Upload() {
         }
       } else {
         response = await axios.post(`${API_BASE_URL}/api/detect-text`, { text: textInput }, {
+          timeout: 20000,
           headers: { 'Content-Type': 'application/json' }
         });
       }
       
       const elapsed = Date.now() - startTime;
-      const minAnimationTime = 3000;
+      const minAnimationTime = 2500;
       const remainingTime = Math.max(0, minAnimationTime - elapsed);
 
       setTimeout(() => {
@@ -140,9 +176,17 @@ export default function Upload() {
       }, remainingTime);
 
     } catch (err) {
-      console.error(err);
+      console.error('Detection API error:', err);
       setStatus('error');
-      setErrorMsg(err.response?.data?.detail || 'An error occurred during verification.');
+      let displayError = 'An error occurred during verification.';
+      if (err.code === 'ECONNABORTED') {
+        displayError = 'Inference server timeout. Please try again with a smaller image.';
+      } else if (err.response?.data?.detail) {
+        displayError = err.response.data.detail;
+      } else if (err.message) {
+        displayError = err.message;
+      }
+      setErrorMsg(displayError);
     }
   };
 

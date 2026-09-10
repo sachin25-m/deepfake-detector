@@ -218,9 +218,12 @@ def run_benchmark():
     import main
     print("Initializing Vision Transformer & Face Detector for evaluation...")
     if "model" not in main.ml_models:
-        main.ml_models["processor"] = main.AutoImageProcessor.from_pretrained(main.MODEL_NAME)
-        main.ml_models["model"] = main.AutoModelForImageClassification.from_pretrained(main.MODEL_NAME)
+        model_path = main.LOCAL_MODEL_DIR if (os.path.exists(main.LOCAL_MODEL_DIR) and os.path.exists(os.path.join(main.LOCAL_MODEL_DIR, "config.json"))) else main.MODEL_NAME
+        print(f"Loading ViT evaluation model from: {model_path}")
+        main.ml_models["processor"] = main.AutoImageProcessor.from_pretrained(model_path)
+        main.ml_models["model"] = main.AutoModelForImageClassification.from_pretrained(model_path)
         main.ml_models["model"].eval()
+        main.ml_models["model_source"] = f"Fine-Tuned ViT ({model_path})"
     if "face_cascade" not in main.ml_models:
         import cv2
         main.ml_models["face_cascade"] = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
