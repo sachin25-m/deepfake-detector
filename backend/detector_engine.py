@@ -24,9 +24,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-torch.set_num_threads(1)
+num_cores = os.cpu_count() or 4
+torch.set_num_threads(min(4, max(1, num_cores)))
 
 
 
@@ -371,17 +370,26 @@ class ForensicAnalyzer:
         except Exception:
             return 0.10, 0.10
 
-    def analyze_image(self, image_bytes: bytes, filename: str = ""):
+    def analyze_image(self, image_bytes: bytes, filename: str = "", pil_img: Image.Image = None):
         """
         Executes full multi-modal forensic & neural detection on an image.
         Completely ignores EXIF, metadata, filename, and source headers.
         """
-        # Load image via PIL to safely strip all EXIF / metadata
-        pil_img = Image.open(io.BytesIO(image_bytes))
+        if pil_img is None:
+            # Load image via PIL to safely strip all EXIF / metadata
+            pil_img = Image.open(io.BytesIO(image_bytes))
         
         # Normalize color channels to RGB
         if pil_img.mode != 'RGB':
             pil_img = pil_img.convert('RGB')
+
+        # Optimize performance for large images: downscale to max 1024px while preserving aspect ratio
+        max_dim = 1024
+        if pil_img.width > max_dim or pil_img.height > max_dim:
+            ratio = max_dim / float(max(pil_img.width, pil_img.height))
+            new_w = int(pil_img.width * ratio)
+            new_h = int(pil_img.height * ratio)
+            pil_img = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
             
         pil_gray = pil_img.convert('L')
         

@@ -7,12 +7,6 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
-      - key: OMP_NUM_THREADS
-        value: "1"
-      - key: MKL_NUM_THREADS
-        value: "1"
-      - key: OPENBLAS_NUM_THREADS
-        value: "1"
       - key: HF_HUB_DISABLE_SYMLINKS_WARNING
         value: "1"
       - key: TRANSFORMERS_NO_ADVISORY_WARNINGS

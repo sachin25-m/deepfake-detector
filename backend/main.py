@@ -3,12 +3,6 @@ import os
 import gc
 import tempfile
 
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
-
 import numpy as np
 from PIL import Image, ExifTags
 import cv2
@@ -20,7 +14,8 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-torch.set_num_threads(1)
+num_cores = os.cpu_count() or 4
+torch.set_num_threads(min(4, max(1, num_cores)))
 
 
 MODEL_NAME = "dima806/deepfake_vs_real_image_detection"
@@ -43,10 +38,11 @@ ml_models = {}
 async def lifespan(app: FastAPI):
     # Load ML models and Haar cascade on startup
     try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if os.path.exists(LOCAL_MODEL_DIR) and os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")):
             print(f"Loading fine-tuned ViT model from local path: {LOCAL_MODEL_DIR}...")
-            processor = AutoImageProcessor.from_pretrained(LOCAL_MODEL_DIR)
-            model = AutoModelForImageClassification.from_pretrained(LOCAL_MODEL_DIR)
+            processor = AutoImageProcessor.from_pretrained(LOCAL_MODEL_DIR, local_files_only=True)
+            model = AutoModelForImageClassification.from_pretrained(LOCAL_MODEL_DIR, local_files_only=True)
             ml_models["model_source"] = "Fine-Tuned ViT (140K Real & Fake Faces Dataset)"
         else:
             print(f"Loading HuggingFace ViT model fallback: {MODEL_NAME}...")
@@ -54,10 +50,12 @@ async def lifespan(app: FastAPI):
             model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
             ml_models["model_source"] = f"Vision Transformer ({MODEL_NAME})"
             
+        model.to(device)
         model.eval()
         ml_models["processor"] = processor
         ml_models["model"] = model
-        print("Deepfake detection model loaded successfully.")
+        ml_models["device"] = device
+        print(f"Deepfake detection model loaded successfully on device: {device}.")
     except Exception as e:
         print(f"Warning: Could not load ViT model ({e}). Using forensic detector engine fallback.")
         
@@ -142,6 +140,18 @@ def extract_image_exif(pil_image: Image.Image) -> dict:
         "fields_detected": len(forensics)
     }
 
+def preprocess_and_downscale_image(pil_image: Image.Image, max_dim: int = 1024) -> Image.Image:
+    """
+    Downscales large high-resolution images to a maximum dimension (1024px)
+    while preserving aspect ratio. Prevents severe CPU inference bottlenecks on 4K/8K images.
+    """
+    if pil_image.width > max_dim or pil_image.height > max_dim:
+        ratio = max_dim / float(max(pil_image.width, pil_image.height))
+        new_w = int(pil_image.width * ratio)
+        new_h = int(pil_image.height * ratio)
+        return pil_image.resize((new_w, new_h), Image.Resampling.BILINEAR)
+    return pil_image
+
 def run_model_inference(pil_image: Image.Image):
     """
     Runs actual Vision Transformer model inference on the provided image/crop.
@@ -150,11 +160,13 @@ def run_model_inference(pil_image: Image.Image):
     """
     processor = ml_models["processor"]
     model = ml_models["model"]
+    device = ml_models.get("device", torch.device("cpu"))
     
     if pil_image.mode != "RGB":
         pil_image = pil_image.convert("RGB")
         
     inputs = processor(images=pil_image, return_tensors="pt")
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.inference_mode():
         outputs = model(**inputs)
         probs = F.softmax(outputs.logits, dim=-1)[0].tolist()
@@ -221,11 +233,14 @@ async def detect_media(file: UploadFile = File(...)):
             
         exif_info = extract_image_exif(pil_image)
         
+        # Optimize performance for large images: downscale to max 1024px while preserving aspect ratio
+        pil_image = preprocess_and_downscale_image(pil_image, max_dim=1024)
+        
         # 1. Multi-Modal Forensic Analysis (ELA, FFT, Boundary, MesoNet)
         forensic_res = None
         if detector_instance is not None:
             try:
-                forensic_res = detector_instance.analyze_image(file_bytes, filename)
+                forensic_res = detector_instance.analyze_image(file_bytes, filename, pil_img=pil_image)
             except Exception:
                 pass
                 

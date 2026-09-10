@@ -220,9 +220,13 @@ def run_benchmark():
     if "model" not in main.ml_models:
         model_path = main.LOCAL_MODEL_DIR if (os.path.exists(main.LOCAL_MODEL_DIR) and os.path.exists(os.path.join(main.LOCAL_MODEL_DIR, "config.json"))) else main.MODEL_NAME
         print(f"Loading ViT evaluation model from: {model_path}")
-        main.ml_models["processor"] = main.AutoImageProcessor.from_pretrained(model_path)
-        main.ml_models["model"] = main.AutoModelForImageClassification.from_pretrained(model_path)
-        main.ml_models["model"].eval()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        main.ml_models["processor"] = main.AutoImageProcessor.from_pretrained(model_path, local_files_only=os.path.exists(main.LOCAL_MODEL_DIR))
+        model = main.AutoModelForImageClassification.from_pretrained(model_path, local_files_only=os.path.exists(main.LOCAL_MODEL_DIR))
+        model.to(device)
+        model.eval()
+        main.ml_models["model"] = model
+        main.ml_models["device"] = device
         main.ml_models["model_source"] = f"Fine-Tuned ViT ({model_path})"
     if "face_cascade" not in main.ml_models:
         import cv2
