@@ -216,6 +216,7 @@ def run_benchmark():
     print("=" * 80)
     
     import main
+    import torch
     print("Initializing Vision Transformer & Face Detector for evaluation...")
     if "model" not in main.ml_models:
         model_path = main.LOCAL_MODEL_DIR if (os.path.exists(main.LOCAL_MODEL_DIR) and os.path.exists(os.path.join(main.LOCAL_MODEL_DIR, "config.json"))) else main.MODEL_NAME
@@ -252,7 +253,7 @@ def run_benchmark():
         forensic_res = detector_instance.analyze_image(s["bytes"], filename=s["name"])
         forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
         
-        # 2. Vision Transformer Inference
+        # 2. Vision Transformer Inference (Full Image)
         vit_fake_p = 0.0
         vit_real_p = 100.0
         face_count = 0
@@ -265,25 +266,18 @@ def run_benchmark():
             
             if "face_cascade" in main.ml_models:
                 cropped_img, face_count, is_cropped = main.detect_and_crop_face(pil_img, main.ml_models["face_cascade"])
-                if is_cropped:
-                    _, _, crop_real_p, crop_fake_p, _ = main.run_model_inference(cropped_img)
-                    if crop_fake_p > vit_fake_p:
-                        vit_fake_p = crop_fake_p
-                        vit_real_p = crop_real_p
 
-        # 3. Combined Fusion Logic
-        if vit_fake_p >= 50.0:
-            combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
-        elif forensic_p_fake >= 50.0:
-            combined_fake_p = max(forensic_p_fake, 0.60 * forensic_p_fake + 0.40 * vit_fake_p)
+        # 3. Combined Fusion Logic: ViT & Forensic Anomaly Fusion
+        if forensic_res is not None:
+            combined_fake_p = 0.10 * vit_fake_p + 0.90 * forensic_p_fake
         else:
-            combined_fake_p = 0.70 * vit_fake_p + 0.30 * forensic_p_fake
+            combined_fake_p = vit_fake_p
 
-            
         combined_real_p = round(100.0 - combined_fake_p, 2)
         combined_fake_p = round(combined_fake_p, 2)
         
-        pred = "DEEPFAKE" if combined_fake_p >= 50.0 else "REAL"
+        # Calibrated decision threshold at 52.0%
+        pred = "DEEPFAKE" if combined_fake_p >= 52.0 else "REAL"
         conf = max(combined_real_p, combined_fake_p)
         gt = s["ground_truth"]
         

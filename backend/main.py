@@ -406,48 +406,39 @@ async def detect_media(file: UploadFile = File(...)):
             except Exception as e:
                 print(f"Error during ViT inference: {e}")
 
-        # 3. Multi-Modal Fusion: Combine ViT predictions with physical forensic suite
-        # 3. Multi-Modal Fusion: ViT Model as Primary Classifier (85%), Physical Forensics as Secondary Signal (15%)
+        # 3. Multi-Modal Fusion: ViT & Forensic Anomaly Fusion
         if forensic_res is not None:
             forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
-            
-            # Primary ViT signal (85%) + Secondary Physical Forensics (15%)
-            combined_fake_p = 0.85 * vit_fake_p + 0.15 * forensic_p_fake
-            
-            # Guard condition: Secondary physical heuristics must NOT override a strong ViT model prediction
-            if vit_fake_p < 35.0: # Strongly Real
-                combined_fake_p = min(combined_fake_p, 48.0)
-            elif vit_fake_p > 65.0: # Strongly Fake
-                combined_fake_p = max(combined_fake_p, 52.0)
+            combined_fake_p = 0.10 * vit_fake_p + 0.90 * forensic_p_fake
         else:
             combined_fake_p = vit_fake_p
                 
         combined_real_p = round(100.0 - combined_fake_p, 2)
         combined_fake_p = round(combined_fake_p, 2)
         
-        is_deepfake = bool(combined_fake_p >= 50.0)
+        # Calibrated decision threshold at 52.0%
+        is_deepfake = bool(combined_fake_p >= 52.0)
         confidence = max(combined_real_p, combined_fake_p)
         verdict = "DEEPFAKE" if is_deepfake else "REAL"
 
-            
-            if face_count == 0:
-                exp = f"Vision Transformer & multi-modal FFT/ELA forensics evaluated global image structure."
-            elif is_deepfake:
-                exp = "Facial synthesis anomalies and digital manipulation boundaries detected by Vision Transformer & Forensic Engine."
-            else:
-                exp = "Natural facial features and authentic pixel coherence verified by Vision Transformer & Forensic Fusion."
+        if face_count == 0:
+            exp = f"Vision Transformer & multi-modal FFT/ELA forensics evaluated global image structure."
+        elif is_deepfake:
+            exp = "Facial synthesis anomalies and digital manipulation boundaries detected by Vision Transformer & Forensic Engine."
+        else:
+            exp = "Natural facial features and authentic pixel coherence verified by Vision Transformer & Forensic Fusion."
 
-            model_source = ml_models.get("model_source", "Fine-Tuned ViT")
-            return {
-                "filename": filename,
-                "type": content_type or "image/jpeg",
-                "result": verdict,
-                "confidence": confidence,
-                "details": {
-                    "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
-                    "faces_detected": face_count,
-                    "face_crop_applied": is_cropped,
-                    "real_probability": combined_real_p,
+        model_source = ml_models.get("model_source", "Fine-Tuned ViT")
+        return {
+            "filename": filename,
+            "type": content_type or "image/jpeg",
+            "result": verdict,
+            "confidence": confidence,
+            "details": {
+                "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
+                "faces_detected": face_count,
+                "face_crop_applied": is_cropped,
+                "real_probability": combined_real_p,
                     "fake_probability": combined_fake_p,
                     "explanation": exp,
                     "forensic_breakdown": forensic_res.get("details", {}).get("forensic_breakdown", {}),
