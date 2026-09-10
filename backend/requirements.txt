@@ -2,7 +2,6 @@ fastapi
 uvicorn
 python-multipart
 pillow
-torch
 transformers
 huggingface-hub
 opencv-python-headless<5

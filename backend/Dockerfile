@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Upgrade build tools to prevent PEP 517 build subprocess failures
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # Copy requirement files and install CPU-optimized PyTorch
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
