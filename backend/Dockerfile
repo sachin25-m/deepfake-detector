@@ -1,13 +1,13 @@
 # Production Dockerfile for RealNetra ViT Deepfake Detection Backend
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
 # Install system dependencies for OpenCV and image processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
-    libgl1-mesa-glx \
+    libxrender1 \
+    libgl1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,7 +29,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8000/ || exit 1
+  CMD sh -c 'curl -f http://localhost:${PORT:-8000}/ || exit 1'
 
 # Start persistent FastAPI Uvicorn server (evaluates $PORT dynamically if set by host)
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
