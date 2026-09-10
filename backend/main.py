@@ -73,12 +73,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="RealNetra Deepfake Detection API", lifespan=lifespan)
 
-# Allow CORS for frontend
+# Allow CORS for frontend (Vercel & local)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
