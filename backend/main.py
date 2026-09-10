@@ -19,9 +19,7 @@ torch.set_num_threads(min(4, max(1, num_cores)))
 
 
 MODEL_NAME = "dima806/deepfake_vs_real_image_detection"
-LOCAL_MODEL_DIR = os.getenv(
-    "MODEL_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned"))
+
 candidate_paths = [
     os.getenv("MODEL_PATH"),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned")),
