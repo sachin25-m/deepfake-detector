@@ -22,9 +22,21 @@ MODEL_NAME = "dima806/deepfake_vs_real_image_detection"
 LOCAL_MODEL_DIR = os.getenv(
     "MODEL_PATH",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned"))
-)
-if not os.path.exists(LOCAL_MODEL_DIR):
-    LOCAL_MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "model", "realnetra_vit_finetuned"))
+candidate_paths = [
+    os.getenv("MODEL_PATH"),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "model", "realnetra_vit_finetuned")),
+    os.path.abspath(os.path.join(os.getcwd(), "model", "realnetra_vit_finetuned")),
+    "/app/model/realnetra_vit_finetuned"
+]
+LOCAL_MODEL_DIR = None
+for p in candidate_paths:
+    if p and os.path.exists(p) and os.path.exists(os.path.join(p, "config.json")):
+        LOCAL_MODEL_DIR = p
+        break
+
+if not LOCAL_MODEL_DIR:
+    LOCAL_MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned"))
 
 try:
     from detector_engine import detector_instance
