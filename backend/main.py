@@ -94,7 +94,7 @@ app.add_middleware(
 
 def detect_and_crop_face(pil_image: Image.Image, face_cascade):
     """
-    Detects faces in the image using Haar Cascade and crops the primary face with 20% margin.
+    Detects faces in the image using Haar Cascade with multi-stage preprocessing & profile cascade fallback.
     Returns: (cropped_pil_image, face_count, is_cropped)
     """
     np_img = np.array(pil_image)
@@ -105,7 +105,27 @@ def detect_and_crop_face(pil_image: Image.Image, face_cascade):
     else:
         gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
         
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
+    # Pass 1: Frontal face detection on raw gray with flexible minSize
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=4, minSize=(30, 30))
+    
+    # Pass 2: CLAHE adaptive contrast equalization for low-contrast/compressed photos if 0 faces
+    if len(faces) == 0:
+        try:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            equalized_gray = clahe.apply(gray)
+            faces = face_cascade.detectMultiScale(equalized_gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+        except Exception:
+            pass
+
+    # Pass 3: Profile face cascade for angled/profile faces if 0 faces
+    if len(faces) == 0:
+        try:
+            profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
+            if not profile_cascade.empty():
+                faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+        except Exception:
+            pass
+
     face_count = len(faces)
     
     if face_count > 0:

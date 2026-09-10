@@ -106,7 +106,7 @@ class ForensicAnalyzer:
         
     def detect_faces(self, pil_img):
         """
-        Detect face bounding boxes in an image using OpenCV Haar Cascades.
+        Detect face bounding boxes in an image using OpenCV Haar Cascades with multi-stage preprocessing.
         Returns list of (x, y, w, h) bounding boxes (empty list if no face found).
         """
         try:
@@ -122,9 +122,21 @@ class ForensicAnalyzer:
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
             
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+            # Pass 1: Frontal face on raw gray with minSize=(30, 30)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=4, minSize=(30, 30))
+            
+            # Pass 2: CLAHE adaptive contrast equalization if 0 faces found
             if len(faces) == 0:
-                faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+                try:
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                    equalized_gray = clahe.apply(gray)
+                    faces = face_cascade.detectMultiScale(equalized_gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+                except Exception:
+                    pass
+
+            # Pass 3: Profile face cascade for angled faces if 0 faces found
+            if len(faces) == 0 and not profile_cascade.empty():
+                faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
                 
             if len(faces) > 0:
                 return [tuple(map(int, f)) for f in faces]
