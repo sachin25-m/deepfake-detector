@@ -16,9 +16,9 @@ WORKDIR /app
 # Upgrade build tools to prevent PEP 517 build subprocess failures
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy requirement files and install CPU-optimized PyTorch
+# Copy requirement files and install CPU-optimized PyTorch & Torchvision
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy model weights and backend application code
