@@ -113,23 +113,32 @@ class ForensicAnalyzer:
             import cv2
             np_img = np.array(pil_img)
             if len(np_img.shape) == 2:
-                gray = np_img
+                orig_gray = np_img
             elif np_img.shape[2] == 4:
-                gray = cv2.cvtColor(np_img, cv2.COLOR_RGBA2GRAY)
+                orig_gray = cv2.cvtColor(np_img, cv2.COLOR_RGBA2GRAY)
             else:
-                gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
+                orig_gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
                 
+            h_orig, w_orig = orig_gray.shape
+            max_face_dim = 480
+            if max(h_orig, w_orig) > max_face_dim:
+                det_scale = max_face_dim / float(max(h_orig, w_orig))
+                gray = cv2.resize(orig_gray, (int(w_orig * det_scale), int(h_orig * det_scale)), interpolation=cv2.INTER_AREA)
+            else:
+                det_scale = 1.0
+                gray = orig_gray
+
             faces = []
 
-            def run_detection(cas, img, scale_factor=1.08, min_neighbors=3):
+            def run_detection(cas, img, scale_factor=1.10, min_neighbors=3):
                 try:
-                    return cas.detectMultiScale(img, scaleFactor=scale_factor, minNeighbors=min_neighbors, minSize=(30, 30))
+                    return cas.detectMultiScale(img, scaleFactor=scale_factor, minNeighbors=min_neighbors, minSize=(24, 24))
                 except Exception:
                     return ()
 
             # Pass 1: Frontal default cascade
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            res = run_detection(face_cascade, gray, scale_factor=1.08, min_neighbors=4)
+            res = run_detection(face_cascade, gray, scale_factor=1.10, min_neighbors=4)
             if len(res) > 0:
                 faces = list(res)
             
@@ -228,6 +237,9 @@ class ForensicAnalyzer:
                     inds = np.where(ovr <= 0.3)[0]
                     order = order[inds + 1]
                 faces = [rects[k] for k in keep]
+                if det_scale != 1.0:
+                    inv_scale = 1.0 / det_scale
+                    faces = [[int(f[0] * inv_scale), int(f[1] * inv_scale), int(f[2] * inv_scale), int(f[3] * inv_scale)] for f in faces]
                 return [tuple(map(int, f)) for f in faces]
         except Exception:
             pass
