@@ -578,8 +578,8 @@ async def detect_media(file: UploadFile = File(...)):
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
             
-            # Sample up to 8 evenly distributed frames
-            num_samples = min(8, max(1, total_frames))
+            # Sample up to 5 evenly distributed frames for web speed
+            num_samples = min(5, max(1, total_frames))
             sample_indices = np.linspace(0, max(0, total_frames - 1), num_samples, dtype=int)
             
             frame_scores = []
@@ -591,6 +591,13 @@ async def detect_media(file: UploadFile = File(...)):
                 ret, frame = cap.read()
                 if not ret or frame is None:
                     continue
+                
+                # Downscale large video frames to max 640px for fast face detection & preprocessing
+                h, w = frame.shape[:2]
+                max_dim = 640
+                if max(h, w) > max_dim:
+                    scale = max_dim / float(max(h, w))
+                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
                     
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_frame = Image.fromarray(frame_rgb)

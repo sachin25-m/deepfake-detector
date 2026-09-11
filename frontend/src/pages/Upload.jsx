@@ -180,7 +180,9 @@ export default function Upload() {
       setStatus('error');
       let displayError = 'An error occurred during verification.';
       if (err.code === 'ECONNABORTED') {
-        displayError = 'Inference server timeout. Please try again with a smaller image.';
+        displayError = activeTab === 'video'
+          ? 'Inference server timeout. Please try again with a shorter video or lower resolution file.'
+          : 'Inference server timeout. Please try again with a smaller image.';
       } else if (err.response?.data?.detail) {
         displayError = err.response.data.detail;
       } else if (err.message) {

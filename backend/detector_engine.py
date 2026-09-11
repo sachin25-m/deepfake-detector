@@ -606,13 +606,18 @@ class ForensicAnalyzer:
                 os.remove(tmp_path)
                 raise ValueError("Could not read video frames")
                 
-            frame_indices = np.linspace(0, total_frames - 1, num=min(8, total_frames), dtype=int)
+            frame_indices = np.linspace(0, total_frames - 1, num=min(5, total_frames), dtype=int)
             frame_results = []
             
             for idx in frame_indices:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
                 if ret and frame is not None:
+                    h, w = frame.shape[:2]
+                    max_dim = 640
+                    if max(h, w) > max_dim:
+                        scale = max_dim / float(max(h, w))
+                        frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_frame = Image.fromarray(rgb_frame)
                     buf = io.BytesIO()
