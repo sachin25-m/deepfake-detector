@@ -479,8 +479,8 @@ class ForensicAnalyzer:
         if pil_img.mode != 'RGB':
             pil_img = pil_img.convert('RGB')
 
-        # Optimize performance for large images: downscale to max 1024px while preserving aspect ratio
-        max_dim = 1024
+        # Optimize performance for large images: downscale to max 768px while preserving aspect ratio
+        max_dim = 768
         if pil_img.width > max_dim or pil_img.height > max_dim:
             ratio = max_dim / float(max(pil_img.width, pil_img.height))
             new_w = int(pil_img.width * ratio)

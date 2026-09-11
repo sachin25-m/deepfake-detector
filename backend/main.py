@@ -282,10 +282,11 @@ def extract_image_exif(pil_image: Image.Image) -> dict:
         "fields_detected": len(forensics)
     }
 
-def preprocess_and_downscale_image(pil_image: Image.Image, max_dim: int = 1024) -> Image.Image:
+def preprocess_and_downscale_image(pil_image: Image.Image, max_dim: int = 768) -> Image.Image:
     """
-    Downscales large high-resolution images to a maximum dimension (1024px)
-    while preserving aspect ratio. Prevents severe CPU inference bottlenecks on 4K/8K images.
+    Downscales large high-resolution images to a maximum dimension (768px)
+    while preserving aspect ratio. Prevents CPU inference bottlenecks on mobile/4K images.
+    Images smaller than 768px on their longest side are returned unchanged (no upscaling).
     """
     if pil_image.width > max_dim or pil_image.height > max_dim:
         ratio = max_dim / float(max(pil_image.width, pil_image.height))
@@ -389,8 +390,8 @@ async def detect_media(file: UploadFile = File(...)):
             
         exif_info = extract_image_exif(pil_image)
         
-        # Optimize performance for large images: downscale to max 1024px while preserving aspect ratio
-        pil_image = preprocess_and_downscale_image(pil_image, max_dim=1024)
+        # Optimize performance for large images: downscale to max 768px while preserving aspect ratio
+        pil_image = preprocess_and_downscale_image(pil_image, max_dim=768)
         
         # 1. Multi-Modal Forensic Analysis (ELA, FFT, Boundary, MesoNet)
         forensic_res = None
