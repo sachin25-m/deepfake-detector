@@ -217,7 +217,12 @@ class ForensicAnalyzer:
             if len(faces) > 0:
                 rects = []
                 for f in faces:
-                    rects.append([int(f[0]), int(f[1]), int(f[2]), int(f[3])])
+                    fw, fh = int(f[2]), int(f[3])
+                    aspect = fw / float(fh) if fh > 0 else 0
+                    if fw >= 20 and fh >= 20 and 0.55 <= aspect <= 1.75:
+                        rects.append([int(f[0]), int(f[1]), fw, fh])
+                if not rects:
+                    return []
                 boxes = np.array([[r[0], r[1], r[0] + r[2], r[1] + r[3]] for r in rects], dtype=np.float32)
                 x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
                 areas = (x2 - x1) * (y2 - y1)
@@ -396,7 +401,7 @@ class ForensicAnalyzer:
             if face_box is not None and len(face_box) == 4:
                 x, y, fw, fh = face_box
             else:
-                x, y, fw, fh = int(w*0.25), int(h*0.25), int(w*0.50), int(h*0.50)
+                return 0.10, 0.30
 
             # Inner core
             iy1, iy2 = max(0, y + int(fh*0.25)), min(h, y + int(fh*0.75))
@@ -445,8 +450,7 @@ class ForensicAnalyzer:
                 fy1, fy2 = max(0, y), min(h, y + fh)
                 fx1, fx2 = max(0, x), min(w, x + fw)
             else:
-                fy1, fy2 = int(h*0.25), int(h*0.75)
-                fx1, fx2 = int(w*0.25), int(w*0.75)
+                return 0.10, 0.10
                 
             face_arr = np_img[fy1:fy2, fx1:fx2]
             if face_arr.size < 100:

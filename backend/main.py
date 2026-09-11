@@ -98,12 +98,18 @@ def merge_and_deduplicate_faces(faces, iou_threshold=0.3):
     """
     Applies Non-Maximum Suppression (NMS) to merge overlapping face bounding boxes
     from multiple detection passes into single distinct face detections.
+    Filters out non-face candidate noise using aspect ratio constraints.
     """
     if not faces:
         return []
     rects = []
     for f in faces:
-        rects.append([int(f[0]), int(f[1]), int(f[2]), int(f[3])])
+        fw, fh = int(f[2]), int(f[3])
+        aspect = fw / float(fh) if fh > 0 else 0
+        if fw >= 24 and fh >= 24 and 0.55 <= aspect <= 1.75:
+            rects.append([int(f[0]), int(f[1]), fw, fh])
+    if not rects:
+        return []
     
     boxes = np.array([[r[0], r[1], r[0] + r[2], r[1] + r[3]] for r in rects], dtype=np.float32)
     x1 = boxes[:, 0]
@@ -470,18 +476,23 @@ async def detect_media(file: UploadFile = File(...)):
                 ret_s = float(fbd.get("retouch_noise_score", 0.0))
 
                 # Multi-Modal Forensic Safeguard for Manipulated & AI-Generated Images:
-                # 1. Face manipulation (FaceSwap / DeepFaceLab / Splicing / Retouching):
+                # 1. Face manipulation / Image Splicing / Retouching:
                 has_manipulation = (
                     (ret_s >= 0.50 and ela_s >= 0.08) or
-                    (bnd_s >= 0.50 and ela_s >= 0.08) or
-                    (bnd_s >= 0.35 and ret_s >= 0.20)
+                    (bnd_s >= 0.40 and ela_s >= 0.06) or
+                    (ela_s >= 0.25 and (bnd_s >= 0.15 or ret_s >= 0.15)) or
+                    (bnd_s >= 0.50 and ret_s >= 0.20) or
+                    (ela_s >= 0.35)
                 )
 
-                # 2. Extremely high FFT periodic AI synthesis (StyleGAN / Diffusion / NeuralTexture):
-                has_ai_synthesis = (fft_s >= 0.95 and (bnd_s >= 0.05 and ela_s >= 0.05 and not filename.lower().startswith("real_10")))
+                # 2. AI synthesis (StyleGAN / Diffusion / NeuralTexture):
+                has_ai_synthesis = (
+                    (fft_s >= 0.95) or
+                    (fft_s >= 0.72 and (bnd_s >= 0.12 or ela_s >= 0.08 or ret_s >= 0.005 or face_count > 0))
+                )
 
                 # 3. Corroborated FFT anomaly:
-                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.45 or ret_s >= 0.45 or ela_s >= 0.90))
+                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.15 or ret_s >= 0.15 or ela_s >= 0.08))
 
                 if has_manipulation or has_ai_synthesis or has_corroborated_fft:
                     peak_signal = max(fft_s, ela_s, bnd_s, ret_s)
