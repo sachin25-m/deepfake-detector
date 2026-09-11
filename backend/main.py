@@ -475,20 +475,15 @@ async def detect_media(file: UploadFile = File(...)):
                 bnd_s = float(fbd.get("boundary_seam_score", 0.0))
                 ret_s = float(fbd.get("retouch_noise_score", 0.0))
 
-                # Multi-Modal Forensic Safeguard for Manipulated & AI-Generated Images:
-                # 1. Face manipulation / Image Splicing / Retouching:
-                has_manipulation = (
-                    (ret_s >= 0.50 and ela_s >= 0.12 and bnd_s >= 0.25) or
-                    (ela_s >= 0.40 and bnd_s >= 0.30)
-                )
-
-                # 2. AI synthesis (StyleGAN / Diffusion / NeuralTexture):
+                # Multi-Modal Forensic Safeguard for AI-Generated Images & Synthesis:
+                # Extreme periodic AI synthesis override (StyleGAN / Diffusion / NeuralTexture)
+                # FFT >= 0.95 (StyleGAN checkerboard grid) OR (FFT >= 0.75 and low ELA < 0.12 and face detected)
                 has_ai_synthesis = (
                     (fft_s >= 0.95) or
-                    (fft_s >= 0.73 and face_count > 0 and (bnd_s >= 0.15 or ela_s >= 0.08))
+                    (fft_s >= 0.75 and face_count > 0 and ela_s < 0.12 and bnd_s < 0.25)
                 )
 
-                if has_manipulation or has_ai_synthesis:
+                if has_ai_synthesis:
                     peak_signal = max(fft_s, ela_s, bnd_s, ret_s)
                     gan_raw = 0.70 * max(fft_s, bnd_s, ret_s) + 0.30 * peak_signal
                     override_val = 0.15 * vit_fake_p + 0.85 * (gan_raw * 100.0)
