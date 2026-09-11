@@ -478,23 +478,17 @@ async def detect_media(file: UploadFile = File(...)):
                 # Multi-Modal Forensic Safeguard for Manipulated & AI-Generated Images:
                 # 1. Face manipulation / Image Splicing / Retouching:
                 has_manipulation = (
-                    (ret_s >= 0.50 and ela_s >= 0.08) or
-                    (bnd_s >= 0.40 and ela_s >= 0.08) or
-                    (ela_s >= 0.25 and (bnd_s >= 0.15 or ret_s >= 0.15)) or
-                    (bnd_s >= 0.50 and ret_s >= 0.20) or
-                    (ela_s >= 0.35)
+                    (ret_s >= 0.50 and ela_s >= 0.12 and bnd_s >= 0.25) or
+                    (ela_s >= 0.40 and bnd_s >= 0.30)
                 )
 
                 # 2. AI synthesis (StyleGAN / Diffusion / NeuralTexture):
                 has_ai_synthesis = (
                     (fft_s >= 0.95) or
-                    (fft_s >= 0.73 and (face_count > 0 and (bnd_s >= 0.15 or ela_s >= 0.08 or ret_s >= 0.15)))
+                    (fft_s >= 0.73 and face_count > 0 and (bnd_s >= 0.15 or ela_s >= 0.08))
                 )
 
-                # 3. Corroborated FFT anomaly:
-                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.20 or ret_s >= 0.20 or ela_s >= 0.15))
-
-                if has_manipulation or has_ai_synthesis or has_corroborated_fft:
+                if has_manipulation or has_ai_synthesis:
                     peak_signal = max(fft_s, ela_s, bnd_s, ret_s)
                     gan_raw = 0.70 * max(fft_s, bnd_s, ret_s) + 0.30 * peak_signal
                     override_val = 0.15 * vit_fake_p + 0.85 * (gan_raw * 100.0)
