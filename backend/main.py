@@ -444,9 +444,54 @@ async def detect_media(file: UploadFile = File(...)):
                 # ViT leaning REAL: forensic gets only 10% — cannot flip the verdict
                 combined_fake_p = 0.90 * vit_fake_p + 0.10 * forensic_p_fake
             else:
-                # ViT confidently REAL (< 25% fake): forensic is fully suppressed
+                # ViT confidently REAL (< 25% fake): forensic is normally fully suppressed.
                 combined_fake_p = 0.95 * vit_fake_p + 0.05 * forensic_p_fake
                 combined_fake_p = min(combined_fake_p, 40.0)  # hard REAL anchor
+
+                # ── Conservative multi-signal GAN synthesis exception ──────────────────
+                # Purpose: catch StyleGAN / diffusion full-face synthesis where the ViT
+                # has an out-of-distribution blind spot (trained mainly on face-swap style
+                # deepfakes, not full GAN synthesis).
+                #
+                # HARD REQUIREMENT — two independent conditions must BOTH hold:
+                # (A) FFT spectral score >= 0.73  (very strong GAN upsampling artifact)
+                #     Natural camera photos rarely exceed 0.60; this threshold provides
+                #     a clear safety margin above the empirical real-photo noise floor.
+                # (B) At least one OTHER forensic signal is independently elevated:
+                #     boundary >= 0.45, retouch >= 0.45, ELA >= 0.90, or (boundary >= 0.35 & retouch >= 0.20)
+                #
+                # FFT alone NEVER forces DEEPFAKE.  If (B) is not satisfied, this block
+                # is skipped entirely and the hard REAL anchor (40%) is preserved.
+                # ──────────────────────────────────────────────────────────────────────
+                fbd = forensic_res.get("details", {}).get("forensic_breakdown", {})
+                fft_s = float(fbd.get("fft_spectral_score", 0.0))
+                ela_s = float(fbd.get("ela_anomaly_score",   0.0))
+                bnd_s = float(fbd.get("boundary_seam_score", 0.0))
+                ret_s = float(fbd.get("retouch_noise_score", 0.0))
+
+                # Multi-signal corroboration criteria:
+                # (A) Strong FFT frequency spectrum anomaly (>= 0.73)
+                # (B) Robust corroborator: significant boundary seam (>=0.45),
+                #     retouch noise disparity (>=0.45), extreme ELA error spike (>=0.90),
+                #     or elevated seam + retouch co-occurrence (bnd>=0.35 & ret>=0.20)
+                has_strong_fft = (fft_s >= 0.73)
+                has_corroboration = (
+                    bnd_s >= 0.45 or
+                    ret_s >= 0.45 or
+                    ela_s >= 0.90 or
+                    (bnd_s >= 0.35 and ret_s >= 0.20)
+                )
+
+                if has_strong_fft and has_corroboration:
+                    # GAN-weighted forensic score: FFT leads (80%), best corroborator (20%)
+                    support_peak = max(ela_s, bnd_s, ret_s)
+                    gan_raw = 0.80 * fft_s + 0.20 * support_peak          # normalised [0,1]
+                    # Forensic-led override (85%) + ViT contribution (15%)
+                    # Capped at 64% — keeps confidence conservative when ViT disagrees
+                    gan_override = 0.15 * vit_fake_p + 0.85 * (gan_raw * 100.0)
+                    gan_override = min(gan_override, 64.0)
+                    # Only raise, never lower
+                    combined_fake_p = max(combined_fake_p, gan_override)
         else:
             combined_fake_p = vit_fake_p
 
