@@ -479,7 +479,7 @@ async def detect_media(file: UploadFile = File(...)):
                 # Extreme periodic AI synthesis override (StyleGAN / Diffusion / NeuralTexture)
                 # FFT >= 0.95 (StyleGAN checkerboard grid) OR (FFT >= 0.75 and low ELA < 0.12 and face detected)
                 has_ai_synthesis = (
-                    (fft_s >= 0.95) or
+                    (fft_s >= 0.95 and (face_count > 0 or vit_fake_p >= 5.0 or fft_s >= 0.98)) or
                     (fft_s >= 0.75 and face_count > 0 and ela_s < 0.12 and bnd_s < 0.25)
                 )
 
