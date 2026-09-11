@@ -425,18 +425,25 @@ async def detect_media(file: UploadFile = File(...)):
             except Exception as e:
                 print(f"Error during ViT inference: {e}")
 
-        # 3. Multi-Modal Fusion: ViT & Forensic Anomaly Fusion
+        # 3. Multi-Modal Fusion: ViT Primary Classifier & Forensic Anomaly Fusion
         if forensic_res is not None:
             forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
-            combined_fake_p = 0.10 * vit_fake_p + 0.90 * forensic_p_fake
+            if vit_fake_p >= 50.0:
+                combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
+            elif forensic_p_fake >= 60.0:
+                combined_fake_p = 0.20 * vit_fake_p + 0.80 * forensic_p_fake
+            elif forensic_p_fake >= 45.0:
+                combined_fake_p = 0.40 * vit_fake_p + 0.60 * forensic_p_fake
+            else:
+                combined_fake_p = 0.85 * vit_fake_p + 0.15 * forensic_p_fake
         else:
             combined_fake_p = vit_fake_p
                 
         combined_real_p = round(100.0 - combined_fake_p, 2)
         combined_fake_p = round(combined_fake_p, 2)
         
-        # Calibrated decision threshold at 52.0%
-        is_deepfake = bool(combined_fake_p >= 52.0)
+        # Calibrated decision threshold at 50.0%
+        is_deepfake = bool(combined_fake_p >= 50.0)
         confidence = max(combined_real_p, combined_fake_p)
         verdict = "DEEPFAKE" if is_deepfake else "REAL"
 

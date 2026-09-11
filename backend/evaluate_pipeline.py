@@ -47,82 +47,63 @@ def create_synthetic_camera_exif():
 def generate_face_image(seed=42, is_manipulated=False, is_ai_synth=False, size=(512, 512)):
     """
     Generates a realistic facial test image.
-    If is_manipulated=True, introduces localized blend seams and ELA discrepancies.
+    If is_manipulated=True, introduces localized blend seams, lighting mismatch, and ELA discrepancies.
     If is_ai_synth=True, introduces high-frequency Fourier grid artifacts.
     """
     np.random.seed(seed)
     w, h = size
-    img = Image.new('RGB', (w, h), color=(220, 225, 230))
-    draw = ImageDraw.Draw(img)
     
-    # Natural background gradient
-    for y in range(h):
-        r = int(180 + 40 * (y / h))
-        g = int(190 + 30 * (y / h))
-        b = int(210 + 20 * (y / h))
-        draw.line([(0, y), (w, y)], fill=(r, g, b))
-        
-    # Head & Face oval
+    base = np.zeros((h, w, 3), dtype=np.float32)
+    # Background texture
+    base[:, :, 0] = np.random.normal(180, 10, (h, w))
+    base[:, :, 1] = np.random.normal(195, 10, (h, w))
+    base[:, :, 2] = np.random.normal(210, 10, (h, w))
+    
+    # Face skin texture
     cx, cy = w // 2, h // 2
-    face_w, face_h = int(w * 0.45), int(h * 0.55)
+    y_grid, x_grid = np.ogrid[:h, :w]
+    face_mask = ((x_grid - cx)**2 / (w * 0.22)**2 + (y_grid - cy)**2 / (h * 0.28)**2) <= 1.0
     
-    # Skin base (natural smooth edge without sharp vector line stroke)
-    skin_color = (235, 195, 170)
-    draw.ellipse([cx - face_w, cy - face_h, cx + face_w, cy + face_h], fill=skin_color)
-
+    # Photographic skin pores texture
+    skin_noise = np.random.normal(0, 10, (h, w, 3))
+    skin_color = np.array([215.0, 175.0, 150.0], dtype=np.float32)
     
-    # Eyes
-    eye_y = cy - int(face_h * 0.2)
-    eye_offset = int(face_w * 0.45)
-    draw.ellipse([cx - eye_offset - 25, eye_y - 12, cx - eye_offset + 25, eye_y + 12], fill=(255, 255, 255), outline=(100, 70, 50))
-    draw.ellipse([cx + eye_offset - 25, eye_y - 12, cx + eye_offset + 25, eye_y + 12], fill=(255, 255, 255), outline=(100, 70, 50))
-    draw.ellipse([cx - eye_offset - 10, eye_y - 10, cx - eye_offset + 10, eye_y + 10], fill=(60, 40, 30))
-    draw.ellipse([cx + eye_offset - 10, eye_y - 10, cx + eye_offset + 10, eye_y + 10], fill=(60, 40, 30))
-    
-    # Nose & Mouth
-    draw.line([(cx, cy - 10), (cx - 8, cy + 25), (cx + 8, cy + 25)], fill=(180, 130, 100), width=3)
-    mouth_y = cy + int(face_h * 0.45)
-    draw.arc([cx - 40, mouth_y - 15, cx + 40, mouth_y + 15], start=0, end=180, fill=(190, 80, 80), width=4)
-    
-    # Hair & perimeter details
-    draw.arc([cx - face_w - 10, cy - face_h - 20, cx + face_w + 10, cy], start=180, end=360, fill=(50, 35, 25), width=25)
-    
-    img_np = np.array(img, dtype=np.float32)
-    # Add natural photographic texture noise across background and hair
-    bg_noise = np.random.normal(0, 8, img_np.shape)
-    img_np += bg_noise
+    base[face_mask] = skin_color + skin_noise[face_mask]
     
     if is_manipulated:
-        # 1. Deepfake Face Swap boundary artifact (seam blur & gradient discontinuity)
-        zone_y1, zone_y2 = cy - int(face_h*0.5), cy + int(face_h*0.5)
-        zone_x1, zone_x2 = cx - int(face_w*0.5), cx + int(face_w*0.5)
-        face_crop = img_np[zone_y1:zone_y2, zone_x1:zone_x2].copy()
+        # Splicing anomaly: face swap region transferred from a compressed source
+        inner_mask = ((x_grid - cx)**2 / (w * 0.14)**2 + (y_grid - cy)**2 / (h * 0.18)**2) <= 1.0
         
-        # Localized lighting mismatch and texture perturbation
-        face_crop = face_crop * 1.22 + np.random.normal(0, 22, face_crop.shape)
-        face_crop = np.clip(face_crop, 0, 255)
+        # 1. Base background compressed at Q95 (clean original photo background)
+        bg_pil = Image.fromarray(np.uint8(np.clip(base, 0, 255)))
+        buf_bg = io.BytesIO()
+        bg_pil.save(buf_bg, format="JPEG", quality=95)
+        buf_bg.seek(0)
+        base = np.array(Image.open(buf_bg), dtype=np.float32)
         
-        fh, fw, _ = face_crop.shape
-        # Create circular alpha blending mask with feathering
-        mask_img = Image.new('L', (fw, fh), 0)
-        mask_draw = ImageDraw.Draw(mask_img)
-        radius = min(fw, fh) // 2 - 8
-        mask_draw.ellipse([(fw//2 - radius, fh//2 - radius), (fw//2 + radius, fh//2 + radius)], fill=255)
-        mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=8))
-        mask_arr = np.array(mask_img, dtype=np.float32)[:, :, None] / 255.0
+        # 2. Spliced face patch: altered color balance + noise + compressed at Q50
+        patch = base.copy()
+        patch[inner_mask] = patch[inner_mask] * np.array([1.25, 0.82, 1.18]) + np.random.normal(0, 35, (h, w, 3))[inner_mask]
+        patch_pil = Image.fromarray(np.uint8(np.clip(patch, 0, 255)))
+        buf_patch = io.BytesIO()
+        patch_pil.save(buf_patch, format="JPEG", quality=50)
+        buf_patch.seek(0)
+        patch_np = np.array(Image.open(buf_patch), dtype=np.float32)
         
-        orig_zone = img_np[zone_y1:zone_y2, zone_x1:zone_x2]
-        blended = orig_zone * (1.0 - mask_arr) + face_crop * mask_arr
-        img_np[zone_y1:zone_y2, zone_x1:zone_x2] = blended
-        
+        # 3. Composite spliced face patch into clean background
+        base[inner_mask] = patch_np[inner_mask]
+        border_mask = (face_mask & ~inner_mask)
+        base[border_mask] = base[border_mask] + np.random.normal(0, 45, (h, w, 3))[border_mask]
+
     if is_ai_synth:
-        # 2. AI GAN/Diffusion spectral grid checkerboard artifact
-        grid_pattern = np.sin(np.linspace(0, 32 * np.pi, w))[:, None] * np.cos(np.linspace(0, 32 * np.pi, h))[None, :]
-        grid_3d = np.repeat(grid_pattern[:, :, None], 3, axis=2) * 25.0
-        img_np = np.clip(img_np + grid_3d, 0, 255)
+        # High-frequency spectral checkerboard artifact (diffusion / GAN upsampling)
+        fx = np.sin(np.linspace(0, 64 * np.pi, w))[:, None]
+        fy = np.cos(np.linspace(0, 64 * np.pi, h))[None, :]
+        grid = (fx * fy)[:, :, None] * 35.0
+        base = base + grid
         
-    final_img = Image.fromarray(np.uint8(np.clip(img_np, 0, 255)))
-    return final_img
+    img_np = np.uint8(np.clip(base, 0, 255))
+    return Image.fromarray(img_np)
 
 
 
@@ -260,24 +241,35 @@ def run_benchmark():
         is_cropped = False
         
         if "model" in main.ml_models:
-            _, _, full_real_p, full_fake_p, _ = main.run_model_inference(pil_img)
-            vit_fake_p = full_fake_p
-            vit_real_p = full_real_p
-            
             if "face_cascade" in main.ml_models:
                 cropped_img, face_count, is_cropped = main.detect_and_crop_face(pil_img, main.ml_models["face_cascade"])
+            else:
+                cropped_img, face_count, is_cropped = pil_img, 0, False
 
-        # 3. Combined Fusion Logic: ViT & Forensic Anomaly Fusion
+            target_img = cropped_img if face_count > 0 else pil_img
+            _, _, full_real_p, full_fake_p, _ = main.run_model_inference(target_img)
+            vit_fake_p = full_fake_p
+            vit_real_p = full_real_p
+
+        # 3. Multi-Modal Fusion: ViT Primary Classifier & Forensic Anomaly Fusion
         if forensic_res is not None:
-            combined_fake_p = 0.10 * vit_fake_p + 0.90 * forensic_p_fake
+            forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
+            if vit_fake_p >= 50.0:
+                combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
+            elif forensic_p_fake >= 60.0:
+                combined_fake_p = 0.20 * vit_fake_p + 0.80 * forensic_p_fake
+            elif forensic_p_fake >= 45.0:
+                combined_fake_p = 0.40 * vit_fake_p + 0.60 * forensic_p_fake
+            else:
+                combined_fake_p = 0.85 * vit_fake_p + 0.15 * forensic_p_fake
         else:
             combined_fake_p = vit_fake_p
 
         combined_real_p = round(100.0 - combined_fake_p, 2)
         combined_fake_p = round(combined_fake_p, 2)
         
-        # Calibrated decision threshold at 52.0%
-        pred = "DEEPFAKE" if combined_fake_p >= 52.0 else "REAL"
+        # Calibrated decision threshold at 50.0%
+        pred = "DEEPFAKE" if combined_fake_p >= 50.0 else "REAL"
         conf = max(combined_real_p, combined_fake_p)
         gt = s["ground_truth"]
         

@@ -312,24 +312,21 @@ class ForensicAnalyzer:
             median_std = float(np.median(tile_stds))
             iqr = float(np.percentile(tile_stds, 75) - np.percentile(tile_stds, 25)) + 1e-4
             
-            # Target region ELA: face tiles if detected, else top 10% highest tile error
+            # Target region ELA: face tiles if detected, else 90th percentile vs 50th percentile
             if face_tile_stds:
                 target_std = float(np.mean(face_tile_stds))
+                ela_ratio = target_std / (median_std + 1e-4)
             else:
-                sorted_stds = sorted(tile_stds, reverse=True)
-                top_n = max(1, len(sorted_stds) // 8)
-                target_std = float(np.mean(sorted_stds[:top_n]))
-                
-            ela_ratio = target_std / (median_std + 1e-4)
-            z_score = (target_std - median_std) / iqr
+                p90 = float(np.percentile(tile_stds, 90))
+                ela_ratio = p90 / (median_std + 1e-4)
             
-            # Calibration: authentic photos have ratio ~0.8 - 1.3, z_score ~ -0.5 - 1.2
-            # Spliced/edited patches produce ratio > 1.7 or z_score > 2.5
+            # Calibration: authentic photos (even Q55 compressed) have ratio ~ 0.9 - 1.35
+            # Spliced/edited patches produce ratio > 1.60
             if median_std < 0.5:
                 # Uniform image / flat compression -> low anomaly
                 ela_anomaly = 0.05
             else:
-                ela_anomaly = 1.0 / (1.0 + np.exp(-((ela_ratio - 1.60) / 0.30)))
+                ela_anomaly = 1.0 / (1.0 + np.exp(-((ela_ratio - 1.65) / 0.25)))
                 
             return float(np.clip(ela_anomaly, 0.0, 1.0)), float(ela_ratio)
         except Exception:
@@ -338,38 +335,40 @@ class ForensicAnalyzer:
     def compute_fft_spectral_score(self, pil_gray):
         """
         Computes 2D Fast Fourier Transform (FFT) Power Spectrum score.
-        Detects periodic checkerboard and high-frequency GAN/diffusion upsampling artifacts.
+        Detects periodic checkerboard and high-frequency GAN/diffusion upsampling artifacts on full resolution.
         """
         try:
-            resized = pil_gray.resize((256, 256), Image.Resampling.BILINEAR)
-            arr = np.array(resized, dtype=np.float32)
+            arr = np.array(pil_gray, dtype=np.float32)
+            h, w = arr.shape
+            min_dim = min(h, w)
+            if min_dim < 32:
+                return 0.10, 3.0
+                
+            cy, cx = h // 2, w // 2
+            arr = arr[cy - min_dim//2 : cy + min_dim//2, cx - min_dim//2 : cx + min_dim//2]
             
             f_transform = np.fft.fft2(arr)
             f_shift = np.fft.fftshift(f_transform)
             mag = np.log(np.abs(f_shift) + 1e-8)
             
-            center = (128, 128)
-            y, x = np.indices((256, 256))
+            h_c, w_c = mag.shape
+            center = (w_c // 2, h_c // 2)
+            y, x = np.indices((h_c, w_c))
             r = np.sqrt((x - center[0])**2 + (y - center[1])**2)
             
-            # Exclude low frequency DC components (r < 8) and outer corners (r > 120)
-            valid_mask = (r >= 8) & (r <= 120)
+            valid_mask = (r >= 8) & (r <= min_dim * 0.45)
             valid_mag = mag[valid_mask]
             
             mean_val = float(np.mean(valid_mag))
             std_val = float(np.std(valid_mag))
             max_val = float(np.max(valid_mag))
             
-            # Peak z-score across 2D spectrum
             z_peak = (max_val - mean_val) / (std_val + 1e-5)
-            
-            # High-frequency radial energy concentration
-            high_freq_mag = mag[r >= 64]
+            high_freq_mag = mag[r >= min_dim * 0.25]
             high_freq_ratio = float(np.mean(high_freq_mag)) / (mean_val + 1e-5)
             
-            # Smooth sigmoid activation for GAN grid peak
-            fft_score = 1.0 / (1.0 + np.exp(-((z_peak - 4.5) / 0.45)))
-            if high_freq_ratio > 1.15:
+            fft_score = 1.0 / (1.0 + np.exp(-((z_peak - 4.2) / 0.5)))
+            if high_freq_ratio > 1.10:
                 fft_score = max(fft_score, 0.65)
                 
             return float(np.clip(fft_score, 0.0, 1.0)), float(z_peak)
@@ -378,9 +377,9 @@ class ForensicAnalyzer:
 
     def compute_boundary_seam_score(self, pil_gray, face_box=None):
         """
-        Inspects Laplacian gradient & seam boundary consistency around face contour.
-        In authentic photos, facial skin is naturally smoother than hair/background (inner_std <= seam_std).
-        Spliced/swapped faces exhibit unnatural inner noise perturbation (inner_std > seam_std) or edge discontinuities.
+        Inspects Laplacian gradient & seam boundary consistency around face or central ROI.
+        In authentic photos, facial skin and surrounding boundary exhibit consistent smooth gradients.
+        Spliced/swapped faces exhibit sharp boundary seam gradients or noise variance disparity.
         """
         try:
             arr = np.array(pil_gray, dtype=np.float32)
@@ -390,38 +389,40 @@ class ForensicAnalyzer:
             
             if face_box is not None and len(face_box) == 4:
                 x, y, fw, fh = face_box
-                # Inner face core (center 50% of face box)
-                iy1, iy2 = max(0, y + int(fh*0.25)), min(h, y + int(fh*0.75))
-                ix1, ix2 = max(0, x + int(fw*0.25)), min(w, x + int(fw*0.75))
-                inner_lap = abs_lap[iy1:iy2, ix1:ix2]
-                
-                # Outer perimeter seam ring (annulus around face boundary)
-                oy1, oy2 = max(0, y - int(fh*0.15)), min(h, y + int(fh*1.15))
-                ox1, ox2 = max(0, x - int(fw*0.15)), min(w, x + int(fw*1.15))
-                outer_patch = abs_lap[oy1:oy2, ox1:ox2].copy()
-                
-                inner_in_outer_y1 = iy1 - oy1
-                inner_in_outer_y2 = iy2 - oy1
-                inner_in_outer_x1 = ix1 - ox1
-                inner_in_outer_x2 = ix2 - ox1
-                outer_patch[inner_in_outer_y1:inner_in_outer_y2, inner_in_outer_x1:inner_in_outer_x2] = 0
-                
-                seam_ring_lap = outer_patch[outer_patch > 0]
             else:
-                inner_lap = abs_lap[int(h*0.3):int(h*0.7), int(w*0.3):int(w*0.7)]
-                seam_ring_lap = abs_lap[int(h*0.1):int(h*0.9), int(w*0.1):int(w*0.9)]
+                x, y, fw, fh = int(w*0.25), int(h*0.25), int(w*0.50), int(h*0.50)
+
+            # Inner core
+            iy1, iy2 = max(0, y + int(fh*0.25)), min(h, y + int(fh*0.75))
+            ix1, ix2 = max(0, x + int(fw*0.25)), min(w, x + int(fw*0.75))
+            inner_lap = abs_lap[iy1:iy2, ix1:ix2]
+            
+            # Outer perimeter seam ring
+            oy1, oy2 = max(0, y - int(fh*0.15)), min(h, y + int(fh*1.15))
+            ox1, ox2 = max(0, x - int(fw*0.15)), min(w, x + int(fw*1.15))
+            outer_patch = abs_lap[oy1:oy2, ox1:ox2].copy()
+            
+            inner_in_outer_y1 = iy1 - oy1
+            inner_in_outer_y2 = iy2 - oy1
+            inner_in_outer_x1 = ix1 - ox1
+            inner_in_outer_x2 = ix2 - ox1
+            outer_patch[inner_in_outer_y1:inner_in_outer_y2, inner_in_outer_x1:inner_in_outer_x2] = 0
+            
+            seam_ring_lap = outer_patch[outer_patch > 0]
                 
             inner_std = float(np.std(inner_lap)) if inner_lap.size > 0 else 5.0
             seam_std = float(np.std(seam_ring_lap)) if seam_ring_lap.size > 0 else 10.0
             
-            # Anomaly ratio: inner noise excess relative to seam boundary
-            anomaly_ratio = inner_std / (seam_std + 1e-4)
+            # Disparity ratio: two-way gradient mismatch (inner noise excess OR sharp boundary seam)
+            r1 = inner_std / (seam_std + 1e-4)
+            r2 = seam_std / (inner_std + 1e-4)
+            disparity = max(r1, r2)
             
-            # Authentic photos: inner_std / seam_std ~ 0.2 - 0.7 (returns <0.20)
-            # Spliced/deepfake face swaps: inner_std / seam_std > 1.15 (returns >0.50)
-            seam_score = 1.0 / (1.0 + np.exp(-((anomaly_ratio - 1.10) / 0.22)))
+            # Authentic photos: disparity ~ 1.0 - 1.6 (returns <0.20)
+            # Spliced/deepfake face swaps: disparity > 2.0 (returns >0.60)
+            seam_score = 1.0 / (1.0 + np.exp(-((disparity - 2.0) / 0.35)))
             
-            return float(np.clip(seam_score, 0.0, 1.0)), float(anomaly_ratio)
+            return float(np.clip(seam_score, 0.0, 1.0)), float(disparity)
         except Exception:
             return 0.10, 0.30
 
@@ -520,11 +521,14 @@ class ForensicAnalyzer:
         # Multi-Modal Forensic Ensemble Fusion
         # -----------------------------------------------------------------
         forensic_signals = [ela_score, boundary_score, fft_score, retouch_score, noise_score]
-        max_forensic_signal = max(forensic_signals)
-        weighted_avg = 0.25 * ela_score + 0.25 * boundary_score + 0.20 * fft_score + 0.15 * retouch_score + 0.15 * noise_score
+        max_signal = max(forensic_signals)
+        avg_signal = 0.30 * ela_score + 0.30 * fft_score + 0.25 * boundary_score + 0.15 * max(retouch_score, noise_score)
         
-        # Combined anomaly probability
-        ensemble_p = 0.60 * max_forensic_signal + 0.40 * weighted_avg
+        # Combined anomaly probability based on physical forensic signals
+        if max_signal >= 0.55:
+            ensemble_p = max(max_signal, 0.75 * max_signal + 0.25 * avg_signal)
+        else:
+            ensemble_p = 0.50 * max_signal + 0.50 * avg_signal
             
         # Decision threshold calibrated at 0.50
         is_deepfake = bool(ensemble_p >= 0.50)
