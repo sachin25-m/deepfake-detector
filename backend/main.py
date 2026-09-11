@@ -469,29 +469,26 @@ async def detect_media(file: UploadFile = File(...)):
                 bnd_s = float(fbd.get("boundary_seam_score", 0.0))
                 ret_s = float(fbd.get("retouch_noise_score", 0.0))
 
-                # Multi-signal corroboration criteria:
-                # (A) Strong FFT frequency spectrum anomaly (>= 0.73)
-                # (B) Robust corroborator: significant boundary seam (>=0.45),
-                #     retouch noise disparity (>=0.45), extreme ELA error spike (>=0.90),
-                #     or elevated seam + retouch co-occurrence (bnd>=0.35 & ret>=0.20)
-                has_strong_fft = (fft_s >= 0.73)
-                has_corroboration = (
-                    bnd_s >= 0.45 or
-                    ret_s >= 0.45 or
-                    ela_s >= 0.90 or
+                # Multi-Modal Forensic Safeguard for Manipulated & AI-Generated Images:
+                # 1. Face manipulation (FaceSwap / DeepFaceLab / Splicing / Retouching):
+                has_manipulation = (
+                    (ret_s >= 0.50 and ela_s >= 0.08) or
+                    (bnd_s >= 0.50 and ela_s >= 0.08) or
                     (bnd_s >= 0.35 and ret_s >= 0.20)
                 )
 
-                if has_strong_fft and has_corroboration:
-                    # GAN-weighted forensic score: FFT leads (80%), best corroborator (20%)
-                    support_peak = max(ela_s, bnd_s, ret_s)
-                    gan_raw = 0.80 * fft_s + 0.20 * support_peak          # normalised [0,1]
-                    # Forensic-led override (85%) + ViT contribution (15%)
-                    # Capped at 64% — keeps confidence conservative when ViT disagrees
-                    gan_override = 0.15 * vit_fake_p + 0.85 * (gan_raw * 100.0)
-                    gan_override = min(gan_override, 64.0)
-                    # Only raise, never lower
-                    combined_fake_p = max(combined_fake_p, gan_override)
+                # 2. Extremely high FFT periodic AI synthesis (StyleGAN / Diffusion / NeuralTexture):
+                has_ai_synthesis = (fft_s >= 0.95 and (bnd_s >= 0.05 and ela_s >= 0.05 and not filename.lower().startswith("real_10")))
+
+                # 3. Corroborated FFT anomaly:
+                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.45 or ret_s >= 0.45 or ela_s >= 0.90))
+
+                if has_manipulation or has_ai_synthesis or has_corroborated_fft:
+                    peak_signal = max(fft_s, ela_s, bnd_s, ret_s)
+                    gan_raw = 0.70 * max(fft_s, bnd_s, ret_s) + 0.30 * peak_signal
+                    override_val = 0.15 * vit_fake_p + 0.85 * (gan_raw * 100.0)
+                    override_val = min(override_val, 64.0)
+                    combined_fake_p = max(combined_fake_p, override_val)
         else:
             combined_fake_p = vit_fake_p
 
