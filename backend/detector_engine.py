@@ -334,43 +334,37 @@ class ForensicAnalyzer:
 
     def compute_fft_spectral_score(self, pil_gray):
         """
-        Computes 2D Fast Fourier Transform (FFT) Power Spectrum score.
-        Detects periodic checkerboard and high-frequency GAN/diffusion upsampling artifacts on full resolution.
+        Computes 2D Fast Fourier Transform (FFT) Power Spectrum score on 256x256 normalized grid.
+        Detects periodic checkerboard and high-frequency GAN/diffusion upsampling artifacts.
         """
         try:
-            arr = np.array(pil_gray, dtype=np.float32)
-            h, w = arr.shape
-            min_dim = min(h, w)
-            if min_dim < 32:
-                return 0.10, 3.0
-                
-            cy, cx = h // 2, w // 2
-            arr = arr[cy - min_dim//2 : cy + min_dim//2, cx - min_dim//2 : cx + min_dim//2]
+            resized = pil_gray.resize((256, 256), Image.Resampling.BILINEAR)
+            arr = np.array(resized, dtype=np.float32)
             
             f_transform = np.fft.fft2(arr)
             f_shift = np.fft.fftshift(f_transform)
             mag = np.log(np.abs(f_shift) + 1e-8)
             
-            h_c, w_c = mag.shape
-            center = (w_c // 2, h_c // 2)
-            y, x = np.indices((h_c, w_c))
+            center = (128, 128)
+            y, x = np.indices((256, 256))
             r = np.sqrt((x - center[0])**2 + (y - center[1])**2)
             
-            valid_mask = (r >= 8) & (r <= min_dim * 0.45)
+            # Exclude low frequency DC components (r < 8) and outer corners (r > 120)
+            valid_mask = (r >= 8) & (r <= 120)
             valid_mag = mag[valid_mask]
             
             mean_val = float(np.mean(valid_mag))
             std_val = float(np.std(valid_mag))
             max_val = float(np.max(valid_mag))
+            p95 = float(np.percentile(valid_mag, 95))
             
+            # GAN grid artifact produces extreme periodic peak spikes above 95th percentile (ratio > 2.10)
+            grid_peak_ratio = (max_val - p95) / (std_val + 1e-5)
             z_peak = (max_val - mean_val) / (std_val + 1e-5)
-            high_freq_mag = mag[r >= min_dim * 0.25]
-            high_freq_ratio = float(np.mean(high_freq_mag)) / (mean_val + 1e-5)
             
-            fft_score = 1.0 / (1.0 + np.exp(-((z_peak - 4.2) / 0.5)))
-            if high_freq_ratio > 1.10:
-                fft_score = max(fft_score, 0.65)
-                
+            # Calibrated sigmoid activation (threshold 2.10)
+            fft_score = 1.0 / (1.0 + np.exp(-((grid_peak_ratio - 2.10) / 0.35)))
+            
             return float(np.clip(fft_score, 0.0, 1.0)), float(z_peak)
         except Exception:
             return 0.10, 3.8
@@ -517,28 +511,38 @@ class ForensicAnalyzer:
         # 6. Retouching & Noise Discrepancy Analysis
         retouch_score, noise_score = self.compute_retouching_and_noise_score(pil_img, primary_face)
         
-        # -----------------------------------------------------------------
+        # ---------------------------------------------------------------
         # Multi-Modal Forensic Ensemble Fusion
-        # -----------------------------------------------------------------
-        forensic_signals = [ela_score, boundary_score, fft_score, retouch_score, noise_score]
-        max_signal = max(forensic_signals)
-        avg_signal = 0.30 * ela_score + 0.30 * fft_score + 0.25 * boundary_score + 0.15 * max(retouch_score, noise_score)
-        
-        # Combined anomaly probability based on physical forensic signals
-        if max_signal >= 0.55:
-            ensemble_p = max(max_signal, 0.75 * max_signal + 0.25 * avg_signal)
+        # ViT (via main.py) is the PRIMARY classifier.
+        # This engine provides a SECONDARY forensic score to main.py.
+        # MesoNet (nn_pred) leads; forensic signals only corroborate.
+        # ---------------------------------------------------------------
+        forensic_signals = [ela_score, boundary_score, fft_score, max(retouch_score, noise_score)]
+        avg_signal = float(np.mean(forensic_signals))
+
+        # Count how many distinct forensic signals agree on DEEPFAKE (corroboration)
+        corroboration_count = sum(1 for s in forensic_signals if s >= 0.60)
+
+        if float(nn_pred) >= 0.55 and corroboration_count >= 2:
+            # MesoNet confident DEEPFAKE + at least 2 forensic signals agree → reinforce
+            forensic_boost = float(np.mean([s for s in forensic_signals if s >= 0.60]))
+            ensemble_p = 0.70 * float(nn_pred) + 0.30 * forensic_boost
+        elif float(nn_pred) >= 0.45 and corroboration_count >= 1:
+            # MesoNet leaning DEEPFAKE + 1 forensic signal → mild corroboration
+            ensemble_p = 0.80 * float(nn_pred) + 0.20 * avg_signal
         else:
-            ensemble_p = 0.50 * max_signal + 0.50 * avg_signal
-            
+            # MesoNet says REAL or forensic is noisy → MesoNet dominates fully
+            ensemble_p = 0.90 * float(nn_pred) + 0.10 * avg_signal
+
         # Decision threshold calibrated at 0.50
         is_deepfake = bool(ensemble_p >= 0.50)
-        
+
         # Calibrated confidence score
         if is_deepfake:
             confidence = round(float(np.clip(ensemble_p * 100.0, 52.0, 96.5)), 1)
         else:
             confidence = round(float(np.clip((1.0 - ensemble_p) * 100.0, 52.0, 97.0)), 1)
-            
+
         # Count individual detected anomaly triggers
         artifacts_count = sum(1 for s in forensic_signals if s >= 0.50) * 2
         if is_deepfake and artifacts_count == 0:

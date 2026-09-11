@@ -425,23 +425,33 @@ async def detect_media(file: UploadFile = File(...)):
             except Exception as e:
                 print(f"Error during ViT inference: {e}")
 
-        # 3. Multi-Modal Fusion: ViT Primary Classifier & Forensic Anomaly Fusion
+        # 3. Multi-Modal Fusion: ViT Primary Classifier Authority & Forensic Anomaly Safeguard
+        # ViT is the PRIMARY classifier. Forensic signals are SUPPORTING evidence only.
+        # Rule: forensic signals alone can NEVER flip a confident ViT REAL verdict.
         if forensic_res is not None:
             forensic_p_fake = forensic_res.get("probability_deepfake", 0.10) * 100.0
-            if vit_fake_p >= 50.0:
-                combined_fake_p = max(vit_fake_p, 0.70 * vit_fake_p + 0.30 * forensic_p_fake)
-            elif forensic_p_fake >= 60.0:
-                combined_fake_p = 0.20 * vit_fake_p + 0.80 * forensic_p_fake
-            elif forensic_p_fake >= 45.0:
-                combined_fake_p = 0.40 * vit_fake_p + 0.60 * forensic_p_fake
+            if vit_fake_p >= 55.0:
+                # ViT confidently says DEEPFAKE: forensic can reinforce up to 25%
+                combined_fake_p = 0.75 * vit_fake_p + 0.25 * forensic_p_fake
+            elif vit_fake_p >= 40.0:
+                # ViT is uncertain-leaning-DEEPFAKE: ViT still leads at 75%, forensic assists
+                combined_fake_p = 0.75 * vit_fake_p + 0.25 * forensic_p_fake
+                # Hard cap: cannot exceed 49.9% unless forensic is very strong (≥70%)
+                if forensic_p_fake < 70.0:
+                    combined_fake_p = min(combined_fake_p, 49.9)
+            elif vit_fake_p >= 25.0:
+                # ViT leaning REAL: forensic gets only 10% — cannot flip the verdict
+                combined_fake_p = 0.90 * vit_fake_p + 0.10 * forensic_p_fake
             else:
-                combined_fake_p = 0.85 * vit_fake_p + 0.15 * forensic_p_fake
+                # ViT confidently REAL (< 25% fake): forensic is fully suppressed
+                combined_fake_p = 0.95 * vit_fake_p + 0.05 * forensic_p_fake
+                combined_fake_p = min(combined_fake_p, 40.0)  # hard REAL anchor
         else:
             combined_fake_p = vit_fake_p
-                
+
         combined_real_p = round(100.0 - combined_fake_p, 2)
         combined_fake_p = round(combined_fake_p, 2)
-        
+
         # Calibrated decision threshold at 50.0%
         is_deepfake = bool(combined_fake_p >= 50.0)
         confidence = max(combined_real_p, combined_fake_p)
