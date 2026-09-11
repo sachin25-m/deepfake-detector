@@ -479,7 +479,7 @@ async def detect_media(file: UploadFile = File(...)):
                 # 1. Face manipulation / Image Splicing / Retouching:
                 has_manipulation = (
                     (ret_s >= 0.50 and ela_s >= 0.08) or
-                    (bnd_s >= 0.40 and ela_s >= 0.06) or
+                    (bnd_s >= 0.40 and ela_s >= 0.08) or
                     (ela_s >= 0.25 and (bnd_s >= 0.15 or ret_s >= 0.15)) or
                     (bnd_s >= 0.50 and ret_s >= 0.20) or
                     (ela_s >= 0.35)
@@ -488,11 +488,11 @@ async def detect_media(file: UploadFile = File(...)):
                 # 2. AI synthesis (StyleGAN / Diffusion / NeuralTexture):
                 has_ai_synthesis = (
                     (fft_s >= 0.95) or
-                    (fft_s >= 0.72 and (bnd_s >= 0.12 or ela_s >= 0.08 or ret_s >= 0.005 or face_count > 0))
+                    (fft_s >= 0.73 and (face_count > 0 and (bnd_s >= 0.15 or ela_s >= 0.08 or ret_s >= 0.15)))
                 )
 
                 # 3. Corroborated FFT anomaly:
-                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.15 or ret_s >= 0.15 or ela_s >= 0.08))
+                has_corroborated_fft = (fft_s >= 0.73 and (bnd_s >= 0.20 or ret_s >= 0.20 or ela_s >= 0.15))
 
                 if has_manipulation or has_ai_synthesis or has_corroborated_fft:
                     peak_signal = max(fft_s, ela_s, bnd_s, ret_s)
