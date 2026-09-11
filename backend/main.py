@@ -4,7 +4,7 @@ import gc
 import tempfile
 
 import numpy as np
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageOps
 import cv2
 import torch
 import torch.nn.functional as F
@@ -25,7 +25,9 @@ candidate_paths = [
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "model", "realnetra_vit_finetuned")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "model", "realnetra_vit_finetuned")),
     os.path.abspath(os.path.join(os.getcwd(), "model", "realnetra_vit_finetuned")),
-    "/app/model/realnetra_vit_finetuned"
+    "/app/model/realnetra_vit_finetuned",
+    os.path.expanduser("~/app/model/realnetra_vit_finetuned"),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "model", "realnetra_vit_finetuned")),
 ]
 LOCAL_MODEL_DIR = None
 for p in candidate_paths:
@@ -342,11 +344,24 @@ def run_model_inference(pil_image: Image.Image):
 
 @app.get("/")
 def read_root():
+    model_source = ml_models.get("model_source", "Fine-Tuned ViT (140K Real & Fake Faces Dataset)")
     return {
         "status": "online",
         "service": "RealNetra Deepfake Detection API",
         "model": MODEL_NAME,
+        "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
         "architecture": "Vision Transformer (ViT-base-patch16-224)"
+    }
+
+@app.get("/health")
+def health_check():
+    model_source = ml_models.get("model_source", "Fine-Tuned ViT (140K Real & Fake Faces Dataset)")
+    return {
+        "status": "healthy",
+        "service": "RealNetra Deepfake Detection API",
+        "model_loaded": "model" in ml_models,
+        "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
+        "device": str(ml_models.get("device", "cpu"))
     }
 
 @app.post("/api/detect")
@@ -367,7 +382,8 @@ async def detect_media(file: UploadFile = File(...)):
 
     if is_image:
         try:
-            pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+            raw_pil = Image.open(io.BytesIO(file_bytes))
+            pil_image = ImageOps.exif_transpose(raw_pil).convert("RGB")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to decode image: {str(e)}")
             
@@ -399,10 +415,13 @@ async def detect_media(file: UploadFile = File(...)):
                 vit_real_p = full_real_p
                 vit_explanation = full_exp
                 
-                # Face localization auxiliary pass (bounding box count & crop metadata)
-                if "face_cascade" in ml_models:
+                # Face localization auxiliary count (reused from forensic_res to prevent double 5-pass face cascade)
+                if forensic_res is not None:
+                    face_count = forensic_res.get("details", {}).get("faces_detected", 0)
+                    is_cropped = bool(face_count > 0)
+                elif "face_cascade" in ml_models:
                     face_cascade = ml_models["face_cascade"]
-                    cropped_image, face_count, is_cropped = detect_and_crop_face(pil_image, face_cascade)
+                    _, face_count, is_cropped = detect_and_crop_face(pil_image, face_cascade)
             except Exception as e:
                 print(f"Error during ViT inference: {e}")
 
