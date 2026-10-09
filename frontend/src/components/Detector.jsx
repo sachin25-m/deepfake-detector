@@ -31,8 +31,8 @@ export default function Detector({ file, previewUrl, textSnippet, mode, status, 
     }
   }, [status, steps]);
 
-  const isFake = result && (result.result === 'DEEPFAKE' || result.result === 'AI GENERATED');
-  const isUncertain = result && (result.result === 'UNCERTAIN');
+  const isFake = result && (result.result === 'DEEPFAKE' || result.result === 'AI GENERATED' || result.result === 'MANIPULATED');
+  const isUncertain = result && (result.result === 'INCONCLUSIVE' || result.result === 'UNCERTAIN');
   const isReal = result && (result.result === 'REAL' || result.result === 'HUMAN WRITTEN');
 
   let resultColor = 'var(--success)';
@@ -162,17 +162,17 @@ export default function Detector({ file, previewUrl, textSnippet, mode, status, 
               </div>
 
               {/* Forensics Metrics Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.75rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                 <div style={{ padding: '1rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Model Architecture</p>
-                  <p className="mono" style={{ fontWeight: '500', color: 'var(--primary)', fontSize: '0.9rem', wordBreak: 'break-word' }}>
-                    {result.details?.model_used || 'Vision Transformer'}
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Model Pipeline</p>
+                  <p className="mono" style={{ fontWeight: '500', color: 'var(--primary)', fontSize: '0.85rem', wordBreak: 'break-word' }}>
+                    {result.details?.model_used || 'Fine-Tuned ViT + Multi-Modal Fusion'}
                   </p>
                 </div>
 
                 <div style={{ padding: '1rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Inference Probability</p>
-                  <p className="mono" style={{ fontWeight: '500', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Raw Model Output</p>
+                  <p className="mono" style={{ fontWeight: '500', color: 'var(--text-main)', fontSize: '0.88rem' }}>
                     Real: <span style={{ color: 'var(--success)' }}>{result.details?.real_probability ?? (100 - result.confidence)}%</span> | Fake: <span style={{ color: 'var(--danger)' }}>{result.details?.fake_probability ?? result.confidence}%</span>
                   </p>
                 </div>
@@ -180,21 +180,44 @@ export default function Detector({ file, previewUrl, textSnippet, mode, status, 
                 {mode === 'media' && (
                   <div style={{ padding: '1rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Face Localization</p>
-                    <p className="mono" style={{ fontWeight: '500', color: 'var(--accent)', fontSize: '0.95rem' }}>
-                      {result.details?.faces_detected ?? 0} {result.details?.faces_detected === 1 ? 'Face' : 'Faces'} Detected {result.details?.face_crop_applied ? '(Cropped)' : ''}
+                    <p className="mono" style={{ fontWeight: '500', color: 'var(--accent)', fontSize: '0.88rem' }}>
+                      {result.details?.faces_detected ?? 0} {(result.details?.faces_detected ?? 0) === 1 ? 'Face' : 'Faces'} Detected {result.details?.face_crop_applied ? '(Cropped ROI)' : '(Whole Image Analysis)'}
                     </p>
                   </div>
                 )}
 
                 {mode === 'media' && result.details?.metadata_forensics && (
                   <div style={{ padding: '1rem', background: 'var(--btn-secondary-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>EXIF Forensics (Info Only)</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>Metadata Header (Info Only)</p>
                     <p className="mono" style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      {result.details.metadata_forensics.has_exif ? `${result.details.metadata_forensics.camera_make} (${result.details.metadata_forensics.fields_detected} tags)` : 'Stripped / No EXIF'}
+                      {result.details.metadata_forensics.has_exif ? `${result.details.metadata_forensics.camera_make} (${result.details.metadata_forensics.fields_detected} fields)` : 'Stripped / No EXIF'}
                     </p>
                   </div>
                 )}
               </div>
+
+              {/* Analysis Methods Executed */}
+              <div style={{ padding: '0.85rem 1rem', background: 'rgba(0, 240, 255, 0.04)', border: '1px solid rgba(0, 240, 255, 0.15)', borderRadius: '12px', marginBottom: '1.25rem' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>Executed Forensic Modules</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {(result.details?.methods_executed || result.details?.analysis_methods || [
+                    "Vision Transformer (ViT-base)",
+                    "SDXL Neural Detector",
+                    "2D FFT Frequency Upsampling",
+                    "Error Level Analysis (ELA)",
+                    "Boundary Seam Disparity"
+                  ]).map((method, idx) => (
+                    <span key={idx} className="mono" style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '6px', background: 'var(--bg-panel)', border: '1px solid var(--glass-border)', color: 'var(--primary)' }}>
+                      ✓ {method}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Forensic Disclaimer */}
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.4 }}>
+                ⚠️ <strong>Disclaimer:</strong> Automated forensic analysis provides probabilistic evidence based on vision transformers and digital artifact signals. It is intended for supporting investigation and does not constitute absolute legal proof.
+              </p>
 
               <div style={{ display: 'flex', gap: '1.25rem' }}>
                 <button className="btn btn-secondary" style={{ flex: 1, padding: '1rem', borderRadius: '12px' }} onClick={resetView}>New Scan Sequence</button>

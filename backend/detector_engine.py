@@ -429,9 +429,9 @@ class ForensicAnalyzer:
             r2 = seam_std / (inner_std + 1e-4)
             disparity = max(r1, r2)
             
-            # Authentic photos: disparity ~ 1.0 - 1.6 (returns <0.20)
-            # Spliced/deepfake face swaps: disparity > 2.0 (returns >0.60)
-            seam_score = 1.0 / (1.0 + np.exp(-((disparity - 2.0) / 0.35)))
+            # Authentic photos: disparity ~ 1.0 - 2.2 (returns <0.20)
+            # Spliced/deepfake face swaps: disparity > 3.0 (returns >0.60)
+            seam_score = 1.0 / (1.0 + np.exp(-((disparity - 2.8) / 0.35)))
             
             return float(np.clip(seam_score, 0.0, 1.0)), float(disparity)
         except Exception:
