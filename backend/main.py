@@ -74,12 +74,12 @@ def init_ml_pipeline():
         if os.path.exists(LOCAL_MODEL_DIR) and os.path.exists(os.path.join(LOCAL_MODEL_DIR, "config.json")):
             logger.info(f"Loading local fine-tuned ViT model from: {LOCAL_MODEL_DIR}")
             processor = AutoImageProcessor.from_pretrained(LOCAL_MODEL_DIR, local_files_only=True)
-            model = AutoModelForImageClassification.from_pretrained(LOCAL_MODEL_DIR, local_files_only=True)
+            model = AutoModelForImageClassification.from_pretrained(LOCAL_MODEL_DIR, local_files_only=True, low_cpu_mem_usage=True)
             ml_models["model_source"] = "Fine-Tuned ViT (140K Real & Fake Faces Dataset)"
         else:
             logger.info(f"Loading HuggingFace ViT model fallback: {MODEL_NAME}")
             processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-            model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+            model = AutoModelForImageClassification.from_pretrained(MODEL_NAME, low_cpu_mem_usage=True)
             ml_models["model_source"] = f"Vision Transformer ({MODEL_NAME})"
             
         model.to(device)
@@ -90,18 +90,22 @@ def init_ml_pipeline():
     except Exception as e:
         logger.error(f"Critical error loading primary ViT model: {e}")
 
-    # 2. Auxiliary SDXL Neural Detector
-    try:
-        logger.info(f"Loading auxiliary SDXL Neural Detector model: {AUX_SDXL_MODEL_NAME}")
-        sdxl_processor = AutoImageProcessor.from_pretrained(AUX_SDXL_MODEL_NAME)
-        sdxl_model = AutoModelForImageClassification.from_pretrained(AUX_SDXL_MODEL_NAME)
-        sdxl_model.to(device)
-        sdxl_model.eval()
-        ml_models["sdxl_processor"] = sdxl_processor
-        ml_models["sdxl_model"] = sdxl_model
-        logger.info("Auxiliary SDXL Neural Detector loaded successfully.")
-    except Exception as e:
-        logger.warning(f"Optional auxiliary SDXL model loading failed ({e}). Proceeding with primary ViT + Forensic Engine.")
+    # 2. Auxiliary SDXL Neural Detector (Opt-in to preserve RAM and prevent domain mismatch on human faces)
+    enable_sdxl = os.getenv("ENABLE_SDXL_AUX", "0").lower() in ("1", "true", "yes")
+    if enable_sdxl:
+        try:
+            logger.info(f"Loading auxiliary SDXL Neural Detector model: {AUX_SDXL_MODEL_NAME}")
+            sdxl_processor = AutoImageProcessor.from_pretrained(AUX_SDXL_MODEL_NAME)
+            sdxl_model = AutoModelForImageClassification.from_pretrained(AUX_SDXL_MODEL_NAME, low_cpu_mem_usage=True)
+            sdxl_model.to(device)
+            sdxl_model.eval()
+            ml_models["sdxl_processor"] = sdxl_processor
+            ml_models["sdxl_model"] = sdxl_model
+            logger.info("Auxiliary SDXL Neural Detector loaded successfully.")
+        except Exception as e:
+            logger.warning(f"Optional auxiliary SDXL model loading failed ({e}). Proceeding with primary ViT + Forensic Engine.")
+    else:
+        logger.info("Auxiliary SDXL model disabled by default to optimize RAM (ENABLE_SDXL_AUX=0). Primary fine-tuned ViT is active.")
 
     # 3. OpenCV Face Cascades
     try:

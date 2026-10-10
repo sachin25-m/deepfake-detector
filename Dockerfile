@@ -36,13 +36,13 @@ COPY --chown=user backend $HOME/app/backend
 
 WORKDIR $HOME/app/backend
 
-# Default Hugging Face Space port
-ENV PORT=7860
-EXPOSE 7860
+# Default port (Render passes PORT=10000; Hugging Face passes PORT=7860)
+ENV PORT=10000
+EXPOSE 10000 7860
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-7860}/health || exit 1
+  CMD curl -f http://localhost:${PORT:-10000}/health || exit 1
 
 # Start persistent FastAPI Uvicorn server
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
