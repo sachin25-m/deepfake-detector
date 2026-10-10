@@ -2,15 +2,20 @@
 RealNetra Deepfake & Synthetic Media Forensic Detection Engine
 =============================================================
 A robust, device-agnostic, and metadata-free multi-modal forensic inspection
-and deep learning neural detection pipeline.
+pipeline. Provides secondary forensic signals to the primary ViT classifier.
 
 Components:
 1. Face Localization & Extraction (Geometric skin-tone & facial anchor analysis)
-2. MesoNet Spatial Convolutional Neural Network (Mesoscopic facial anomaly detection)
-3. Localized Error Level Analysis (ELA - Face-to-background compression discrepancy)
-4. 2D Fast Fourier Transform (FFT) Power Spectrum Analysis (GAN/Diffusion periodic grid peaks)
-5. Laplacian Edge & Boundary Seam Inconsistency Detection (Blending seams & alpha feathering)
-6. Calibrated Multi-Modal Ensemble Scorer (Zero EXIF/Device/Source bias)
+2. Localized Error Level Analysis (ELA - Face-to-background compression discrepancy)
+3. 2D Fast Fourier Transform (FFT) Power Spectrum Analysis (GAN/Diffusion periodic grid peaks)
+4. Laplacian Edge & Boundary Seam Inconsistency Detection (Blending seams & alpha feathering)
+5. Skin Retouching & Noise Variance Analysis
+6. Calibrated Multi-Modal Forensic Ensemble (purely signal-based, no untrained NN)
+
+NOTE: MesoNet (Meso4) class is retained for architecture reference but is NOT used
+in scoring because no verified checkpoint exists in this repository. Using a randomly
+initialized network as a classifier produces garbage verdicts. The ensemble now
+relies entirely on the four verifiable forensic signals.
 """
 
 import io
@@ -337,13 +342,18 @@ class ForensicAnalyzer:
                 p90 = float(np.percentile(tile_stds, 90))
                 ela_ratio = p90 / (median_std + 1e-4)
             
-            # Calibration: authentic photos (even Q55 compressed) have ratio ~ 0.9 - 1.35
-            # Spliced/edited patches produce ratio > 1.60
+            # FIX BUG-4: Raise ELA threshold from 1.65→2.0 and widen slope 0.25→0.40.
+            # Camera JPEGs re-compressed at Q90 can legitimately produce ratios of 1.2–1.8.
+            # The old threshold of 1.65 was inside the authentic photo range, causing
+            # false positives on real portraits. New threshold 2.0 requires a clearly
+            # anomalous compression error level to flag as suspicious.
+            # Authentic photos (even Q55 compressed): ratio ~ 0.9 – 1.75
+            # Spliced/edited patches: ratio > 2.2
             if median_std < 0.5:
                 # Uniform image / flat compression -> low anomaly
                 ela_anomaly = 0.05
             else:
-                ela_anomaly = 1.0 / (1.0 + np.exp(-((ela_ratio - 1.65) / 0.25)))
+                ela_anomaly = 1.0 / (1.0 + np.exp(-((ela_ratio - 2.0) / 0.40)))
                 
             return float(np.clip(ela_anomaly, 0.0, 1.0)), float(ela_ratio)
         except Exception:
@@ -509,48 +519,67 @@ class ForensicAnalyzer:
         faces = self.detect_faces(pil_img)
         num_faces = len(faces)
         primary_face = faces[0] if num_faces > 0 else None
-        
-        # 2. Neural MesoNet Feature Analysis
-        tensor_input, face_crop = self.extract_face_roi(pil_img, primary_face)
-        with torch.inference_mode():
-            nn_pred = float(self.meso_model(tensor_input).item())
-            
-        # 3. Localized Error Level Analysis (ELA)
+        has_face = primary_face is not None
+
+        # FIX BUG-1/3: MesoNet (Meso4) has NO verified checkpoint loaded — weights are
+        # randomly initialized (kaiming_normal_). Using it as 70-90% of the ensemble
+        # produces garbage verdicts. It has been removed from scoring.
+        # nn_pred = float(self.meso_model(tensor_input).item())  # REMOVED — random weights
+
+        # 2. Localized Error Level Analysis (ELA)
         ela_score, ela_ratio = self.compute_ela_score(pil_img, primary_face)
-        
-        # 4. 2D FFT Frequency Spectrum Analysis
+
+        # 3. 2D FFT Frequency Spectrum Analysis
         fft_score, fft_peak = self.compute_fft_spectral_score(pil_gray)
-        
-        # 5. Boundary Seam & Gradient Consistency
+
+        # 4. Boundary Seam & Gradient Consistency (face-dependent)
         boundary_score, boundary_ratio = self.compute_boundary_seam_score(pil_gray, primary_face)
-        
-        # 6. Retouching & Noise Discrepancy Analysis
+
+        # 5. Retouching & Noise Discrepancy Analysis (face-dependent)
         retouch_score, noise_score = self.compute_retouching_and_noise_score(pil_img, primary_face)
-        
+
+        # FIX BUG-5: Track which signals were actually computed vs. sentinel defaults.
+        # boundary_seam and retouch/noise return 0.10 sentinel for no-face images.
+        # Only include them in the average if a face was detected.
         # ---------------------------------------------------------------
-        # Multi-Modal Forensic Ensemble Fusion
+        # Multi-Modal Forensic Ensemble Fusion (pure signal-based, no untrained NN)
         # ViT (via main.py) is the PRIMARY classifier.
-        # This engine provides a SECONDARY forensic score to main.py.
-        # MesoNet (nn_pred) leads; forensic signals only corroborate.
+        # This engine provides a SECONDARY forensic probability score to main.py.
         # ---------------------------------------------------------------
-        forensic_signals = [ela_score, boundary_score, fft_score, max(retouch_score, noise_score)]
-        avg_signal = float(np.mean(forensic_signals))
 
-        # Count how many distinct forensic signals agree on DEEPFAKE (corroboration)
-        corroboration_count = sum(1 for s in forensic_signals if s >= 0.60)
+        # Always-available signals (computed on full image regardless of face detection)
+        available_signals = [ela_score, fft_score]
+        available_labels = ["ela", "fft"]
 
-        if float(nn_pred) >= 0.55 and corroboration_count >= 2:
-            # MesoNet confident DEEPFAKE + at least 2 forensic signals agree → reinforce
-            forensic_boost = float(np.mean([s for s in forensic_signals if s >= 0.60]))
-            ensemble_p = 0.70 * float(nn_pred) + 0.30 * forensic_boost
-        elif float(nn_pred) >= 0.45 and corroboration_count >= 1:
-            # MesoNet leaning DEEPFAKE + 1 forensic signal → mild corroboration
-            ensemble_p = 0.80 * float(nn_pred) + 0.20 * avg_signal
+        # Face-dependent signals (only computed with valid face box)
+        if has_face:
+            available_signals.append(boundary_score)
+            available_signals.append(max(retouch_score, noise_score))
+            available_labels.append("boundary")
+            available_labels.append("retouch")
+
+        avg_signal = float(np.mean(available_signals))
+        strong_signals = sum(1 for s in available_signals if s >= 0.65)
+        high_signals = sum(1 for s in available_signals if s >= 0.50)
+        max_signal = max(available_signals)
+
+        # Evidence-weighted ensemble (no dominant random NN — pure forensic signal)
+        if strong_signals >= 2:
+            # Multiple strong forensic signals corroborate — boost
+            ensemble_p = 0.60 * max_signal + 0.40 * avg_signal
+        elif strong_signals >= 1 and high_signals >= 2:
+            # One strong signal + at least one moderate signal
+            ensemble_p = 0.55 * max_signal + 0.45 * avg_signal
+        elif high_signals >= 1:
+            # Single moderate or one strong signal — moderate confidence
+            ensemble_p = 0.50 * max_signal + 0.50 * avg_signal
         else:
-            # MesoNet says REAL or forensic is noisy → MesoNet dominates fully
-            ensemble_p = 0.90 * float(nn_pred) + 0.10 * avg_signal
+            # Low forensic evidence — conservative
+            ensemble_p = avg_signal * 0.85
 
-        # Decision threshold calibrated at 0.50
+        ensemble_p = float(np.clip(ensemble_p, 0.0, 1.0))
+
+        # Decision threshold at 0.50
         is_deepfake = bool(ensemble_p >= 0.50)
 
         # Calibrated confidence score
@@ -560,25 +589,29 @@ class ForensicAnalyzer:
             confidence = round(float(np.clip((1.0 - ensemble_p) * 100.0, 52.0, 97.0)), 1)
 
         # Count individual detected anomaly triggers
-        artifacts_count = sum(1 for s in forensic_signals if s >= 0.50) * 2
+        artifacts_count = sum(1 for s in available_signals if s >= 0.50) * 2
         if is_deepfake and artifacts_count == 0:
             artifacts_count = 2
-            
+
+        # Build forensic breakdown — boundary/retouch only included if face detected
+        forensic_breakdown = {
+            "ela_anomaly_score": round(float(ela_score), 3),
+            "fft_spectral_score": round(float(fft_score), 3),
+            "boundary_seam_score": round(float(boundary_score), 3) if has_face else None,
+            "retouch_noise_score": round(float(max(retouch_score, noise_score)), 3) if has_face else None,
+            "signals_computed": available_labels,
+            "face_signals_available": has_face,
+        }
+
         res = {
             "result": "DEEPFAKE" if is_deepfake else "REAL",
             "confidence": confidence,
             "probability_deepfake": round(float(ensemble_p), 4),
             "details": {
-                "model_used": "MesoNet CNN + Multi-Modal Forensic Fusion",
+                "model_used": "Multi-Modal Forensic Fusion (ELA + FFT + Boundary + Noise)",
                 "faces_detected": num_faces,
                 "artifacts_found": artifacts_count if is_deepfake else 0,
-                "forensic_breakdown": {
-                    "spatial_cnn_score": round(float(nn_pred), 3),
-                    "ela_anomaly_score": round(float(ela_score), 3),
-                    "fft_spectral_score": round(float(fft_score), 3),
-                    "boundary_seam_score": round(float(boundary_score), 3),
-                    "retouch_noise_score": round(float(max(retouch_score, noise_score)), 3)
-                }
+                "forensic_breakdown": forensic_breakdown,
             }
         }
         gc.collect()
@@ -665,21 +698,31 @@ class ForensicAnalyzer:
                     "forensic_breakdown": avg_breakdown
                 }
             }
-        except Exception:
+        except Exception as e:
+            # FIX BUG-2: Never return REAL on exception — use INCONCLUSIVE/error state.
+            # Returning REAL with 90% confidence on any crash is a safety violation:
+            # a processing failure is not evidence of authenticity.
+            import logging
+            logging.getLogger("realnetra_forensic").error(
+                f"Video analysis exception (returning INCONCLUSIVE): {e}"
+            )
             return {
-                "result": "REAL",
-                "confidence": 90.0,
-                "probability_deepfake": 0.10,
+                "result": "INCONCLUSIVE",
+                "confidence": 50.0,
+                "probability_deepfake": 0.50,
+                "error": "Video analysis failed — result is not reliable",
                 "details": {
                     "model_used": "Temporal Frame Analysis",
                     "faces_detected": 0,
                     "artifacts_found": 0,
                     "frames_analyzed": 0,
                     "forensic_breakdown": {
-                        "spatial_cnn_score": 0.10,
-                        "ela_anomaly_score": 0.10,
-                        "fft_spectral_score": 0.10,
-                        "boundary_seam_score": 0.10
+                        "ela_anomaly_score": None,
+                        "fft_spectral_score": None,
+                        "boundary_seam_score": None,
+                        "retouch_noise_score": None,
+                        "signals_computed": [],
+                        "face_signals_available": False,
                     }
                 }
             }

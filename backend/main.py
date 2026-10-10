@@ -57,9 +57,14 @@ except Exception as e:
 # Global ML models dictionary
 ml_models = {}
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Load ML models and Haar Cascades
+def init_ml_pipeline():
+    """
+    Initializes ML models and face cascades into global ml_models dict.
+    Can be called by FastAPI lifespan or directly by evaluation / test runners.
+    """
+    if "model" in ml_models:
+        return ml_models
+
     logger.info("Initializing RealNetra ML Model Pipeline...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ml_models["device"] = device
@@ -105,6 +110,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not load OpenCV face cascade: {e}")
 
+    return ml_models
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Load ML models and Haar Cascades
+    init_ml_pipeline()
     gc.collect()
     yield
     # Shutdown: Clean memory
@@ -370,6 +381,166 @@ def run_sdxl_inference(pil_image: Image.Image):
 
     return fake_prob * 100.0
 
+def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content_type: str = "image/jpeg", req_id: str = None) -> dict:
+    """
+    Complete production image inference pipeline.
+    Used by both FastAPI /api/detect endpoint and offline evaluation suites.
+    Executes:
+    1. EXIF metadata extraction & downscaling
+    2. Multi-modal forensic signal inspection (ELA, FFT, Boundary, Retouch/Noise)
+    3. Multi-pass Haar Cascade face detection & face cropping
+    4. Vision Transformer (ViT) inference on full image & face crop
+    5. Auxiliary SDXL detector inference (if available)
+    6. Calibrated multi-modal ensemble fusion with explainable heuristic auditing
+    """
+    req_id = req_id or str(uuid.uuid4())[:8]
+    t_start = time.time()
+
+    try:
+        raw_pil = Image.open(io.BytesIO(file_bytes))
+        pil_image = ImageOps.exif_transpose(raw_pil).convert("RGB")
+    except Exception as e:
+        logger.error(f"[{req_id}] Image decoding failed: {e}")
+        raise HTTPException(status_code=400, detail="Failed to decode image file. File may be corrupted or in an unsupported format.")
+        
+    exif_info = extract_image_exif(pil_image)
+    pil_image = preprocess_and_downscale_image(pil_image, max_dim=768)
+    
+    # 1. Multi-Modal Forensic Inspection (FFT, ELA, Boundary Seam, Retouch/Noise)
+    forensic_res = None
+    if detector_instance is not None:
+        try:
+            forensic_res = detector_instance.analyze_image(file_bytes, filename, pil_img=pil_image)
+        except Exception as e:
+            logger.error(f"[{req_id}] Forensic analyzer error: {e}")
+
+    # 2. Multi-Pass Face Detection & Primary ViT Inference
+    vit_full_real_p, vit_full_fake_p = 100.0, 0.0
+    vit_crop_real_p, vit_crop_fake_p = 100.0, 0.0
+    face_count = 0
+    is_cropped = False
+    
+    if "model" in ml_models:
+        try:
+            vit_full_real_p, vit_full_fake_p = run_model_inference(pil_image)
+
+            face_cascade = ml_models.get("face_cascade")
+            cropped_face_pil, face_count, is_cropped, _ = detect_and_crop_face(pil_image, face_cascade)
+
+            if is_cropped:
+                vit_crop_real_p, vit_crop_fake_p = run_model_inference(cropped_face_pil)
+            else:
+                vit_crop_fake_p = vit_full_fake_p
+        except Exception as e:
+            logger.error(f"[{req_id}] ViT inference error: {e}")
+            raise HTTPException(status_code=500, detail="Model inference failure during deepfake evaluation.")
+
+    vit_fake_p = max(vit_full_fake_p, vit_crop_fake_p)
+    vit_real_p = round(100.0 - vit_fake_p, 2)
+
+    # 3. Auxiliary SDXL Neural Detector
+    sdxl_fake_p = run_sdxl_inference(pil_image)
+
+    # 4. Extract forensic breakdown signals
+    fbd = forensic_res.get("details", {}).get("forensic_breakdown", {}) if forensic_res else {}
+    fft_s_raw = fbd.get("fft_spectral_score", None)
+    ela_s_raw = fbd.get("ela_anomaly_score", None)
+    bnd_s_raw = fbd.get("boundary_seam_score", None)
+    ret_s_raw = fbd.get("retouch_noise_score", None)
+    fft_s = float(fft_s_raw) if fft_s_raw is not None else 0.10
+    ela_s = float(ela_s_raw) if ela_s_raw is not None else 0.10
+    bnd_s = float(bnd_s_raw) if bnd_s_raw is not None else 0.10
+    ret_s = float(ret_s_raw) if ret_s_raw is not None else 0.10
+    bnd_actually_computed = bnd_s_raw is not None
+    ret_actually_computed = ret_s_raw is not None
+
+    # Verified forensic artifact flags
+    strong_fft = (fft_s >= 0.92)
+    strong_boundary = (bnd_s >= 0.88 and bnd_actually_computed)
+    strong_ela = (ela_s >= 0.90)
+
+    # 5. Primary Neural Classifier Authority & Audited Heuristic Telemetry
+    # ViT is the primary validated classifier for facial deepfakes (trained on 140K faces).
+    # SDXL detector is an auxiliary AI-art detector; it is recorded in details for whole-image
+    # AI-art awareness, but does not override facial deepfake classification.
+    primary_fake_p = vit_fake_p
+
+    # Calibrated decision rules:
+    # 1. Confident neural decisions (vit_fake_p < 35% or vit_fake_p > 65%) preserve model probability.
+    #    Unvalidated heuristic noise (e.g. Fourier peaks from studio lighting or foliage) must NOT override a confident neural classification.
+    # 2. In the borderline/ambiguous range (35% to 65%), corroborating physical anomalies provide auxiliary evidence.
+    heuristic_action = "confident_neural_decision"
+    if 35.0 <= primary_fake_p <= 65.0:
+        if (strong_fft or strong_boundary) and primary_fake_p >= 50.0:
+            final_fake_p = min(primary_fake_p + 15.0, 85.0)
+            heuristic_action = "corroborated_artifact_boost"
+        elif strong_ela and primary_fake_p >= 50.0:
+            final_fake_p = min(primary_fake_p + 10.0, 75.0)
+            heuristic_action = "ela_corroborated_boost"
+        else:
+            final_fake_p = primary_fake_p
+            heuristic_action = "ambiguous_neural_range"
+    else:
+        final_fake_p = primary_fake_p
+
+    combined_fake_p = round(float(np.clip(final_fake_p, 0.0, 100.0)), 2)
+    combined_real_p = round(100.0 - combined_fake_p, 2)
+
+    # Decision thresholding with INCONCLUSIVE zone (40.0% to 60.0%)
+    if 40.0 <= combined_fake_p <= 60.0:
+        verdict = "INCONCLUSIVE"
+        confidence = round(max(combined_real_p, combined_fake_p), 2)
+        explanation = "Model output is in the borderline probability zone (40-60%). Insufficient statistical certainty for a definitive classification."
+    elif combined_fake_p > 60.0:
+        verdict = "DEEPFAKE"
+        confidence = combined_fake_p
+        explanation = "Facial synthesis anomalies, digital manipulation boundaries, or periodic upsampling artifacts detected by Vision Transformer & Forensic Fusion Engine."
+    else:
+        verdict = "REAL"
+        confidence = combined_real_p
+        explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer."
+
+    elapsed_ms = round((time.time() - t_start) * 1000, 2)
+    logger.info(f"[{req_id}] Image scan finished in {elapsed_ms}ms: verdict={verdict}, conf={confidence}%, fake_p={combined_fake_p}% (action={heuristic_action})")
+
+    model_source = ml_models.get("model_source", "Fine-Tuned ViT")
+    methods_list = [
+        "Vision Transformer (ViT-base-patch16-224)",
+        "Multi-Pass OpenCV Haar Cascade Face Localization",
+        "2D Fast Fourier Transform (FFT) Power Spectrum Analysis",
+        "Error Level Analysis (ELA) Compression Inspection",
+        "Laplacian Boundary Seam Gradient Disparity Check",
+        "Skin Retouching & Noise Variance Analysis"
+    ]
+    if "sdxl_model" in ml_models:
+        methods_list.insert(1, "Auxiliary SDXL Neural Detector")
+
+    return {
+        "filename": filename,
+        "type": content_type or "image/jpeg",
+        "result": verdict,
+        "confidence": confidence,
+        "details": {
+            "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
+            "faces_detected": face_count,
+            "face_crop_applied": is_cropped,
+            "real_probability": combined_real_p,
+            "fake_probability": combined_fake_p,
+            "vit_prediction": "DEEPFAKE" if vit_fake_p >= 50.0 else "REAL",
+            "vit_real_probability": vit_real_p,
+            "vit_fake_probability": round(vit_fake_p, 2),
+            "vit_full_fake_probability": round(vit_full_fake_p, 2),
+            "vit_crop_fake_probability": round(vit_crop_fake_p, 2) if is_cropped else None,
+            "sdxl_fake_probability": round(sdxl_fake_p, 2) if sdxl_fake_p is not None else None,
+            "heuristic_action": heuristic_action,
+            "explanation": explanation,
+            "methods_executed": methods_list,
+            "forensic_breakdown": fbd,
+            "metadata_forensics": exif_info,
+            "disclaimer": "Automated forensic analysis is probabilistic and intended as supporting evidence, not definitive legal proof."
+        }
+    }
+
 @app.get("/")
 def read_root():
     model_source = ml_models.get("model_source", "Fine-Tuned ViT (140K Real & Fake Faces Dataset)")
@@ -397,8 +568,6 @@ def health_check():
 @app.post("/api/detect")
 async def detect_media(file: UploadFile = File(...)):
     req_id = str(uuid.uuid4())[:8]
-    t_start = time.time()
-
     content_type = file.content_type or ""
     filename = file.filename or "unknown"
     lower_filename = filename.lower()
@@ -416,143 +585,7 @@ async def detect_media(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     if is_image:
-        try:
-            raw_pil = Image.open(io.BytesIO(file_bytes))
-            pil_image = ImageOps.exif_transpose(raw_pil).convert("RGB")
-        except Exception as e:
-            logger.error(f"[{req_id}] Image decoding failed: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to decode image file: {str(e)}")
-            
-        exif_info = extract_image_exif(pil_image)
-        pil_image = preprocess_and_downscale_image(pil_image, max_dim=768)
-        
-        # 1. Multi-Modal Forensic Inspection (FFT, ELA, Boundary Seam, Retouch/Noise)
-        forensic_res = None
-        if detector_instance is not None:
-            try:
-                forensic_res = detector_instance.analyze_image(file_bytes, filename, pil_img=pil_image)
-            except Exception as e:
-                logger.error(f"[{req_id}] Forensic analyzer error: {e}")
-
-        # 2. Multi-Pass Face Detection & Primary ViT Inference
-        vit_full_real_p, vit_full_fake_p = 100.0, 0.0
-        vit_crop_real_p, vit_crop_fake_p = 100.0, 0.0
-        face_count = 0
-        is_cropped = False
-        
-        if "model" in ml_models:
-            try:
-                vit_full_real_p, vit_full_fake_p = run_model_inference(pil_image)
-
-                # Face cropping evaluation
-                face_cascade = ml_models.get("face_cascade")
-                cropped_face_pil, face_count, is_cropped, _ = detect_and_crop_face(pil_image, face_cascade)
-
-                if is_cropped:
-                    vit_crop_real_p, vit_crop_fake_p = run_model_inference(cropped_face_pil)
-                else:
-                    vit_crop_fake_p = vit_full_fake_p
-            except Exception as e:
-                logger.error(f"[{req_id}] ViT inference error: {e}")
-                raise HTTPException(status_code=500, detail="Model inference failure during deepfake evaluation.")
-
-        vit_fake_p = max(vit_full_fake_p, vit_crop_fake_p)
-
-        # 3. Auxiliary SDXL Neural Detector
-        sdxl_fake_p = run_sdxl_inference(pil_image)
-
-        # Extract forensic breakdown signals
-        fbd = forensic_res.get("details", {}).get("forensic_breakdown", {}) if forensic_res else {}
-        fft_s = float(fbd.get("fft_spectral_score", 0.10))
-        ela_s = float(fbd.get("ela_anomaly_score", 0.10))
-        bnd_s = float(fbd.get("boundary_seam_score", 0.10))
-        ret_s = float(fbd.get("retouch_noise_score", 0.10))
-        meso_s = float(fbd.get("spatial_cnn_score", 0.10))
-
-        # 4. Principled Multi-Modal Model & Forensic Fusion Logic
-        # Neural model probabilities: vit_fake_p (0-100), sdxl_fake_p (0-100 or None)
-        # Forensic artifact signals: fft_s, ela_s, bnd_s, ret_s, meso_s (0.0 to 1.0)
-
-        # Base neural classifier ensemble probability
-        if sdxl_fake_p is not None:
-            if is_cropped:
-                # Primary face crop ViT gets 60% weight, whole-image SDXL gets 40%
-                raw_model_fake = 0.60 * vit_fake_p + 0.40 * sdxl_fake_p
-            else:
-                # Whole image analysis: 50% ViT, 50% SDXL
-                raw_model_fake = 0.50 * vit_fake_p + 0.50 * sdxl_fake_p
-        else:
-            raw_model_fake = vit_fake_p
-
-        # Verified forensic artifact flags
-        strong_fft = (fft_s >= 0.92)       # Periodic GAN/Diffusion grid artifact
-        strong_boundary = (bnd_s >= 0.88)  # Face-swap splicing boundary seam artifact
-        strong_ela = (ela_s >= 0.80)       # High compression error level disparity
-
-        # Apply camera photo false-positive safeguard & forensic corroboration
-        if vit_fake_p < 5.0 and not strong_boundary and not strong_fft:
-            # Authentic camera photo anchor safeguard
-            final_fake_p = min(raw_model_fake, 35.0)
-        elif strong_fft or strong_boundary or strong_ela:
-            # Corroborated physical/spectral manipulation artifact elevates probability
-            final_fake_p = max(raw_model_fake, 75.0 if (strong_fft or strong_boundary) else 65.0)
-        else:
-            final_fake_p = raw_model_fake
-
-        combined_fake_p = round(float(np.clip(final_fake_p, 0.0, 100.0)), 2)
-        combined_real_p = round(100.0 - combined_fake_p, 2)
-
-        # Detect model conflicts (e.g. ViT and SDXL strongly disagree without corroborating artifacts)
-        model_conflict = (sdxl_fake_p is not None and abs(vit_fake_p - sdxl_fake_p) > 65.0 and not (strong_fft or strong_boundary))
-
-        # Decision thresholding with INCONCLUSIVE state
-        if (40.0 <= combined_fake_p <= 60.0) or model_conflict:
-            verdict = "INCONCLUSIVE"
-            confidence = round(max(combined_real_p, combined_fake_p), 2)
-            explanation = "Model indicators or forensic signals are ambiguous or conflicting. Insufficient evidence for a definitive real or fake classification."
-        elif combined_fake_p > 60.0:
-            verdict = "DEEPFAKE"
-            confidence = combined_fake_p
-            explanation = "Facial synthesis anomalies, digital manipulation boundaries, or periodic upsampling artifacts detected by Vision Transformer & Forensic Fusion Engine."
-        else:
-            verdict = "REAL"
-            confidence = combined_real_p
-            explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer & Forensic Fusion Engine."
-
-        elapsed_ms = round((time.time() - t_start) * 1000, 2)
-        logger.info(f"[{req_id}] Image scan finished in {elapsed_ms}ms: verdict={verdict}, conf={confidence}%, fake_p={combined_fake_p}%")
-
-        model_source = ml_models.get("model_source", "Fine-Tuned ViT")
-        methods_list = [
-            "Vision Transformer (ViT-base-patch16-224)",
-            "Multi-Pass OpenCV Haar Cascade Face Localization",
-            "2D Fast Fourier Transform (FFT) Power Spectrum Analysis",
-            "Error Level Analysis (ELA) Compression Inspection",
-            "Laplacian Boundary Seam Gradient Disparity Check",
-            "Skin Retouching & Noise Variance Analysis"
-        ]
-        if "sdxl_model" in ml_models:
-            methods_list.insert(1, "Auxiliary SDXL Neural Detector")
-
-        return {
-            "filename": filename,
-            "type": content_type or "image/jpeg",
-            "result": verdict,
-            "confidence": confidence,
-            "details": {
-                "model_used": f"{model_source} + Multi-Modal Forensic Fusion",
-                "faces_detected": face_count,
-                "face_crop_applied": is_cropped,
-                "real_probability": combined_real_p,
-                "fake_probability": combined_fake_p,
-                "explanation": explanation,
-                "methods_executed": methods_list,
-                "forensic_breakdown": fbd,
-                "metadata_forensics": exif_info,
-                "disclaimer": "Automated forensic analysis is probabilistic and intended as supporting evidence, not definitive legal proof."
-            }
-        }
-
+        return process_image_pipeline(file_bytes, filename=filename, content_type=content_type, req_id=req_id)
     else:
         # Video Frame Analysis
         temp_video_path = None

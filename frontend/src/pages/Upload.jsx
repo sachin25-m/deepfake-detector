@@ -5,7 +5,7 @@ import axios from 'axios';
 import { INITIAL_HISTORY } from './Dashboard';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
 
 export default function Upload() {
   const [activeTab, setActiveTab] = useState('image'); // 'image', 'video' or 'text'
@@ -100,6 +100,12 @@ export default function Upload() {
   };
 
   const startDetection = async () => {
+    if (!API_BASE_URL) {
+      setStatus('error');
+      setErrorMsg('Backend API endpoint is not configured. In production, set the VITE_API_URL environment variable to your deployed RealNetra backend service URL.');
+      return;
+    }
+
     if ((activeTab === 'image' || activeTab === 'video') && !file) return;
     if (activeTab === 'text' && textInput.length < 10) {
       setErrorMsg('Text must be at least 10 characters long.');
@@ -183,6 +189,8 @@ export default function Upload() {
         displayError = activeTab === 'video'
           ? 'Inference server timeout. Please try again with a shorter video or lower resolution file.'
           : 'Inference server timeout. Please try again with a smaller image.';
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        displayError = `Cannot connect to RealNetra backend (${API_BASE_URL || 'unconfigured'}). Please verify the backend service is running and accessible.`;
       } else if (err.response?.data?.detail) {
         displayError = err.response.data.detail;
       } else if (err.message) {

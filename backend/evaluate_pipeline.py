@@ -242,12 +242,14 @@ def run_benchmark():
         
         if "model" in main.ml_models:
             if "face_cascade" in main.ml_models:
-                cropped_img, face_count, is_cropped = main.detect_and_crop_face(pil_img, main.ml_models["face_cascade"])
+                # BUG-5 FIX: detect_and_crop_face returns 4 values: (crop, count, is_cropped, box)
+                cropped_img, face_count, is_cropped, _ = main.detect_and_crop_face(pil_img, main.ml_models["face_cascade"])
             else:
                 cropped_img, face_count, is_cropped = pil_img, 0, False
 
             target_img = cropped_img if face_count > 0 else pil_img
-            _, _, full_real_p, full_fake_p, _ = main.run_model_inference(target_img)
+            # BUG-6 FIX: run_model_inference returns 2 values (real_prob, fake_prob) not 5
+            full_real_p, full_fake_p = main.run_model_inference(target_img)
             vit_fake_p = full_fake_p
             vit_real_p = full_real_p
 
