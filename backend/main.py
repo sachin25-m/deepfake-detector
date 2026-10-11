@@ -498,15 +498,15 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
             face_cascade = ml_models.get("face_cascade")
             cropped_face_pil, face_count, is_cropped, _ = detect_and_crop_face(pil_image, face_cascade)
 
-            # Strategy B Production Fix: Use full-image inference directly as primary neural authority.
-            # Eliminates the harmful secondary crop pass and max() operator that hallucinated deepfake
-            # probabilities on partial face crops (nose/eyes/sub-regions), cutting validation Real FPR by 75.5%.
-            vit_crop_fake_p = None
+            if is_cropped:
+                vit_crop_real_p, vit_crop_fake_p = run_model_inference(cropped_face_pil)
+            else:
+                vit_crop_fake_p = vit_full_fake_p
         except Exception as e:
             logger.error(f"[{req_id}] ViT inference error: {e}")
             raise HTTPException(status_code=500, detail="Model inference failure during deepfake evaluation.")
 
-    vit_fake_p = vit_full_fake_p
+    vit_fake_p = max(vit_full_fake_p, vit_crop_fake_p)
     vit_real_p = round(100.0 - vit_fake_p, 2)
 
     # 3. Auxiliary SDXL Neural Detector
@@ -536,8 +536,10 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
     # AI-art awareness, but does not override facial deepfake classification.
     primary_fake_p = vit_fake_p
 
-    # Calibrated decision rules with multi-layer uncertainty safeguards:
-    # 1. Auxiliary corroborated boost: in the ambiguous range (35% to 65%), corroborating physical anomalies provide auxiliary evidence.
+    # Calibrated decision rules:
+    # 1. Confident neural decisions (vit_fake_p < 35% or vit_fake_p > 65%) preserve model probability.
+    #    Unvalidated heuristic noise (e.g. Fourier peaks from studio lighting or foliage) must NOT override a confident neural classification.
+    # 2. In the borderline/ambiguous range (35% to 65%), corroborating physical anomalies provide auxiliary evidence.
     heuristic_action = "confident_neural_decision"
     if 35.0 <= primary_fake_p <= 65.0:
         if (strong_fft or strong_boundary) and primary_fake_p >= 50.0:
@@ -555,58 +557,19 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
     combined_fake_p = round(float(np.clip(final_fake_p, 0.0, 100.0)), 2)
     combined_real_p = round(100.0 - combined_fake_p, 2)
 
-    # 2. Multi-Signal Forensic-Neural Conflict Check:
-    # Combines independent forensic signals (2D FFT, JPEG ELA, Boundary Seams, Retouch Noise)
-    # so natural sensor noise or studio lighting does not trigger false warnings,
-    # while preserving strong safeguards for neural-forensic evidence conflicts.
-    forensic_conflict = (
-        primary_fake_p < 35.0 and (
-            (fft_s >= 0.94) or
-            (ela_s >= 0.80) or
-            (bnd_s >= 0.75 and bnd_actually_computed) or
-            (fft_s >= 0.85 and (
-                (ela_s >= 0.20) or
-                (bnd_s >= 0.20 and bnd_actually_computed) or
-                (ret_s >= 0.10 and ret_actually_computed) or
-                (primary_fake_p < 5.0 and ela_s <= 0.06)
-            ))
-        )
-    )
-
-    # 3. Decision thresholding with uncertainty-aware safeguards:
-    # Rule A: No face detected safeguard. RealNetra specializes in facial manipulation;
-    #         absence of a detected face or clean forensics must NEVER certify an image as REAL.
-    if face_count == 0:
+    # Decision thresholding with INCONCLUSIVE zone (40.0% to 60.0%)
+    if 40.0 <= combined_fake_p <= 60.0:
         verdict = "INCONCLUSIVE"
-        heuristic_action = "no_face_detected_inconclusive"
-        confidence = 50.0
-        explanation = "No distinct human face localized in the image. RealNetra specializes in facial deepfake analysis; absence of a detected face cannot confirm authenticity."
-
-    # Rule B: Forensic-Neural conflict safeguard
-    elif forensic_conflict:
-        verdict = "INCONCLUSIVE"
-        heuristic_action = "forensic_neural_conflict_inconclusive"
-        confidence = 50.0
-        explanation = "Forensic conflict detected: Vision Transformer indicates natural facial features, but physical/frequency forensic analysis detected significant anomalous artifacts (FFT/ELA/boundary seam). Returned INCONCLUSIVE for manual review."
-
-    # Rule C: Decisive DEEPFAKE (fake probability > 75.0%)
-    elif combined_fake_p > 75.0:
+        confidence = round(max(combined_real_p, combined_fake_p), 2)
+        explanation = "Model output is in the borderline probability zone (40-60%). Insufficient statistical certainty for a definitive classification."
+    elif combined_fake_p > 60.0:
         verdict = "DEEPFAKE"
         confidence = combined_fake_p
         explanation = "Facial synthesis anomalies, digital manipulation boundaries, or periodic upsampling artifacts detected by Vision Transformer & Forensic Fusion Engine."
-
-    # Rule D: Decisive REAL (fake probability < 25.0% on detected face without conflict)
-    elif combined_fake_p < 25.0:
+    else:
         verdict = "REAL"
         confidence = combined_real_p
-        explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified across detected face."
-
-    # Rule E: Uncertainty band (25.0% to 75.0% initial heuristic)
-    else:
-        verdict = "INCONCLUSIVE"
-        heuristic_action = "uncertainty_band_inconclusive"
-        confidence = round(max(combined_real_p, combined_fake_p), 2)
-        explanation = f"Model output is in the uncertainty band ({round(combined_fake_p, 1)}% fake probability). Insufficient statistical certainty for a definitive classification without manual review."
+        explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer."
 
     elapsed_ms = round((time.time() - t_start) * 1000, 2)
     logger.info(f"[{req_id}] Image scan finished in {elapsed_ms}ms: verdict={verdict}, conf={confidence}%, fake_p={combined_fake_p}% (action={heuristic_action})")

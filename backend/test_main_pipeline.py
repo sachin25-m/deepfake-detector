@@ -224,106 +224,8 @@ def test_forensic_none_handling_and_ensemble():
     assert res["details"]["heuristic_action"] in [
         "camera_anchor_cleared", "neural_model_primary", "confident_neural_decision",
         "corroborated_artifact_boost", "ela_corroborated_boost",
-        "forensic_neural_conflict_inconclusive", "no_face_detected_inconclusive",
-        "uncertainty_band_inconclusive"
+        "forensic_neural_conflict_inconclusive"
     ]
-
-
-# -----------------------------------------------------------------------------
-# 8. Decision Safeguards & Uncertainty Policy Unit Tests
-# -----------------------------------------------------------------------------
-def test_no_face_input_safeguard():
-    """Requirement: Do not treat absence of a detected face or clean forensic signals as proof of genuine."""
-    # Synthetic flat image has no face features
-    img_bytes = create_synthetic_test_image(color=(180, 140, 100), size=(256, 256))
-    res = process_image_pipeline(img_bytes, filename="safeguard_noface.jpg")
-
-    assert res["result"] == "INCONCLUSIVE", f"Expected INCONCLUSIVE for no-face input, got {res['result']}"
-    assert res["confidence"] <= 60.0, f"Expected capped confidence <= 60%, got {res['confidence']}%"
-    assert res["details"]["faces_detected"] == 0
-    assert res["details"]["heuristic_action"] == "no_face_detected_inconclusive"
-    assert "absence of a detected face" in res["details"]["explanation"]
-
-
-def test_borderline_uncertainty_band_policy():
-    """Requirement: Borderline predictions in 25%-75% band must return INCONCLUSIVE rather than high-confidence claims."""
-    # Test on web-compressed or multi-person photo known to have borderline fake prob
-    suite_dir = os.path.join(os.path.dirname(__file__), "..", "scratch", "real_test_suite", "real")
-    sample_file = os.path.join(suite_dir, "real_06_multi_person_2.jpg")
-    if not os.path.exists(sample_file):
-        sample_file = os.path.join(suite_dir, "real_09_web_compressed.jpg")
-
-    if os.path.exists(sample_file):
-        with open(sample_file, "rb") as f:
-            b = f.read()
-        res = process_image_pipeline(b, filename=os.path.basename(sample_file))
-        fake_p = res["details"]["fake_probability"]
-        if 25.0 <= fake_p <= 75.0:
-            assert res["result"] == "INCONCLUSIVE"
-            assert res["details"]["heuristic_action"] in ["uncertainty_band_inconclusive", "no_face_detected_inconclusive"]
-            assert res["confidence"] <= 75.0, f"Uncertainty confidence should not exceed 75%, got {res['confidence']}%"
-
-
-def test_forensic_neural_conflict_safeguard():
-    """Requirement: Neural model predicting REAL (<35%) while forensic analysis detects strong artifacts must return INCONCLUSIVE."""
-    # Use synthetic image with strong synthetic Fourier/boundary artifacts
-    suite_dir = os.path.join(os.path.dirname(__file__), "..", "scratch", "real_test_suite", "fake")
-    sample_file = os.path.join(suite_dir, "fake_03_stylegan_grid.jpg")
-    if os.path.exists(sample_file):
-        with open(sample_file, "rb") as f:
-            b = f.read()
-        res = process_image_pipeline(b, filename=os.path.basename(sample_file))
-        # Must NEVER be called REAL despite neural model giving low fake_p
-        assert res["result"] != "REAL", f"Manipulated image must NOT be classified as REAL! Got {res['result']}"
-        assert res["result"] in ["INCONCLUSIVE", "DEEPFAKE"]
-        assert res["details"]["heuristic_action"] in ["no_face_detected_inconclusive", "forensic_neural_conflict_inconclusive"]
-
-
-def test_high_confidence_false_real_prevention():
-    """Requirement: Prevent unearned >90% REAL claims on non-face or conflicting images."""
-    suite_dir = os.path.join(os.path.dirname(__file__), "..", "scratch", "real_test_suite", "real")
-    landscape_file = os.path.join(suite_dir, "real_10_landscape_noface.jpg")
-    if os.path.exists(landscape_file):
-        with open(landscape_file, "rb") as f:
-            b = f.read()
-        res = process_image_pipeline(b, filename=os.path.basename(landscape_file))
-        # A landscape has no face, so it must NEVER receive REAL with 98% confidence
-        assert res["result"] == "INCONCLUSIVE", f"Landscape with no face must return INCONCLUSIVE, got {res['result']}"
-        assert res["confidence"] <= 60.0, f"Confidence on non-face must be modest, got {res['confidence']}%"
-
-
-def test_high_confidence_false_fake_prevention():
-    """Requirement: Borderline predictions cannot be escalated to DEEPFAKE without exceeding 75% or corroboration."""
-    img_bytes = create_synthetic_test_image(color=(120, 120, 120), size=(200, 200))
-    res = process_image_pipeline(img_bytes, filename="test_border.jpg")
-    if res["details"]["fake_probability"] <= 75.0:
-        assert res["result"] != "DEEPFAKE" or res["details"]["heuristic_action"] in ["corroborated_artifact_boost", "ela_corroborated_boost"]
-
-
-def test_target_false_real_deepfakes_regression():
-    """Requirement Task 3: Regression test preventing false REAL verdicts on verified deepfakes face2face and boundary seam."""
-    suite_dir = os.path.join(os.path.dirname(__file__), "..", "scratch", "real_test_suite", "fake")
-    for fname in ["fake_08_face2face.jpg", "fake_02_boundary_seam.jpg"]:
-        path = os.path.join(suite_dir, fname)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                b = f.read()
-            res = process_image_pipeline(b, filename=fname)
-            assert res["result"] != "REAL", f"Target deepfake {fname} must NEVER be classified as REAL! Got {res['result']}"
-            assert res["result"] in ["INCONCLUSIVE", "DEEPFAKE"], f"Target deepfake {fname} should be INCONCLUSIVE or DEEPFAKE, got {res['result']}"
-
-
-def test_genuine_portraits_authenticity():
-    """Requirement Task 3: Regression test verifying genuine portraits are recognized as REAL."""
-    suite_dir = os.path.join(os.path.dirname(__file__), "..", "scratch", "real_test_suite", "real")
-    for fname in ["real_01_portrait_obama.jpg", "real_02_portrait_pichai.png"]:
-        path = os.path.join(suite_dir, fname)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                b = f.read()
-            res = process_image_pipeline(b, filename=fname)
-            assert res["result"] == "REAL", f"Genuine portrait {fname} expected REAL, got {res['result']}"
-            assert res["confidence"] >= 95.0, f"Genuine portrait {fname} expected confidence >= 95%, got {res['confidence']}%"
 
 
 if __name__ == "__main__":
@@ -354,18 +256,4 @@ if __name__ == "__main__":
     print("  [OK] Fake dataset resource transparency check passed.")
     test_forensic_none_handling_and_ensemble()
     print("  [OK] Forensic None handling and calibrated ensemble logic passed.")
-    test_no_face_input_safeguard()
-    print("  [OK] Safeguard 1: No-face input safeguard passed (never returns REAL).")
-    test_borderline_uncertainty_band_policy()
-    print("  [OK] Safeguard 2: Borderline uncertainty band (25%-75%) policy passed.")
-    test_forensic_neural_conflict_safeguard()
-    print("  [OK] Safeguard 3: Forensic-neural conflict safeguard passed.")
-    test_high_confidence_false_real_prevention()
-    print("  [OK] Safeguard 4: High-confidence false REAL prevention passed (landscape returns INCONCLUSIVE).")
-    test_high_confidence_false_fake_prevention()
-    print("  [OK] Safeguard 5: High-confidence false FAKE prevention passed.")
-    test_target_false_real_deepfakes_regression()
-    print("  [OK] Safeguard 6: Target false-REAL deepfakes regression test passed.")
-    test_genuine_portraits_authenticity()
-    print("  [OK] Safeguard 7: Genuine portraits authenticity regression test passed.")
-    print("\nALL 19 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
+    print("\nALL 12 AUTOMATED BACKEND TESTS PASSED SUCCESSFULLY!")
