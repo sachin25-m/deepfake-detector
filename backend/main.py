@@ -506,7 +506,8 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
             logger.error(f"[{req_id}] ViT inference error: {e}")
             raise HTTPException(status_code=500, detail="Model inference failure during deepfake evaluation.")
 
-    vit_fake_p = max(vit_full_fake_p, vit_crop_fake_p)
+    # Full-image ViT provides primary facial classification without sub-crop hallucination
+    vit_fake_p = vit_full_fake_p
     vit_real_p = round(100.0 - vit_fake_p, 2)
 
     # 3. Auxiliary SDXL Neural Detector
@@ -526,50 +527,51 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
     ret_actually_computed = ret_s_raw is not None
 
     # Verified forensic artifact flags
-    strong_fft = (fft_s >= 0.92)
+    strong_fft = (fft_s >= 0.90)
     strong_boundary = (bnd_s >= 0.88 and bnd_actually_computed)
-    strong_ela = (ela_s >= 0.90)
+    strong_ela = (ela_s >= 0.80)
 
     # 5. Primary Neural Classifier Authority & Audited Heuristic Telemetry
-    # ViT is the primary validated classifier for facial deepfakes (trained on 140K faces).
-    # SDXL detector is an auxiliary AI-art detector; it is recorded in details for whole-image
-    # AI-art awareness, but does not override facial deepfake classification.
     primary_fake_p = vit_fake_p
 
     # Calibrated decision rules:
-    # 1. Confident neural decisions (vit_fake_p < 35% or vit_fake_p > 65%) preserve model probability.
-    #    Unvalidated heuristic noise (e.g. Fourier peaks from studio lighting or foliage) must NOT override a confident neural classification.
-    # 2. In the borderline/ambiguous range (35% to 65%), corroborating physical anomalies provide auxiliary evidence.
     heuristic_action = "confident_neural_decision"
-    if 35.0 <= primary_fake_p <= 65.0:
-        if (strong_fft or strong_boundary) and primary_fake_p >= 50.0:
-            final_fake_p = min(primary_fake_p + 15.0, 85.0)
-            heuristic_action = "corroborated_artifact_boost"
-        elif strong_ela and primary_fake_p >= 50.0:
-            final_fake_p = min(primary_fake_p + 10.0, 75.0)
-            heuristic_action = "ela_corroborated_boost"
-        else:
-            final_fake_p = primary_fake_p
-            heuristic_action = "ambiguous_neural_range"
+    if fft_s >= 0.98:
+        # Extreme periodic frequency artifact from StyleGAN / latent diffusion
+        final_fake_p = max(primary_fake_p, 75.0)
+        heuristic_action = "corroborated_artifact_boost"
+    elif (strong_fft or strong_boundary) and primary_fake_p >= 30.0:
+        final_fake_p = min(primary_fake_p + 20.0, 85.0)
+        heuristic_action = "corroborated_artifact_boost"
+    elif strong_ela and primary_fake_p >= 35.0:
+        final_fake_p = min(primary_fake_p + 15.0, 80.0)
+        heuristic_action = "ela_corroborated_boost"
+    elif primary_fake_p <= 25.0 and face_count >= 1 and fft_s <= 0.40 and (bnd_s <= 0.05 if bnd_actually_computed else True):
+        # Verified camera noise with authentic human facial portrait
+        final_fake_p = max(0.0, primary_fake_p - 5.0)
+        heuristic_action = "camera_anchor_cleared"
+    elif 35.0 <= primary_fake_p <= 55.0:
+        final_fake_p = primary_fake_p
+        heuristic_action = "ambiguous_neural_range"
     else:
         final_fake_p = primary_fake_p
 
     combined_fake_p = round(float(np.clip(final_fake_p, 0.0, 100.0)), 2)
     combined_real_p = round(100.0 - combined_fake_p, 2)
 
-    # Decision thresholding with INCONCLUSIVE zone (40.0% to 60.0%)
-    if 40.0 <= combined_fake_p <= 60.0:
-        verdict = "INCONCLUSIVE"
-        confidence = round(max(combined_real_p, combined_fake_p), 2)
-        explanation = "Model output is in the borderline probability zone (40-60%). Insufficient statistical certainty for a definitive classification."
-    elif combined_fake_p > 60.0:
+    # Decision thresholding with safeguards
+    if combined_fake_p >= 55.0:
         verdict = "DEEPFAKE"
         confidence = combined_fake_p
         explanation = "Facial synthesis anomalies, digital manipulation boundaries, or periodic upsampling artifacts detected by Vision Transformer & Forensic Fusion Engine."
-    else:
+    elif combined_fake_p <= 40.0:
         verdict = "REAL"
         confidence = combined_real_p
         explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer."
+    else:
+        verdict = "INCONCLUSIVE"
+        confidence = round(max(combined_real_p, combined_fake_p), 2)
+        explanation = "Model output is in the borderline probability zone (40-55%). Insufficient statistical certainty for a definitive classification."
 
     elapsed_ms = round((time.time() - t_start) * 1000, 2)
     logger.info(f"[{req_id}] Image scan finished in {elapsed_ms}ms: verdict={verdict}, conf={confidence}%, fake_p={combined_fake_p}% (action={heuristic_action})")

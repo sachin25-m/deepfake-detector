@@ -27,7 +27,6 @@
   "patch_size": 16,
   "pooler_act": "tanh",
   "pooler_output_size": 768,
-  "problem_type": "single_label_classification",
   "qkv_bias": true,
-  "transformers_version": "5.17.0"
+  "transformers_version": "5.16.1"
 }
