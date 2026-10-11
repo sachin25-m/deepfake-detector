@@ -27,3 +27,15 @@ yarn-error.log*
 # Test images & temporary scratch
 backend/*.jpg
 scratch/
+dataset/
+evaluation_data/
+checkpoints_*/
+realnetra_exp_*/
+realnetra_vit_finetuned_export/
+model/*.onnx
+model/realnetra_vit_candidate/
+*.parquet
+*.ipynb
+scripts/
+backend/test_candidate_integration.py
+realnetra_v5_*.md
