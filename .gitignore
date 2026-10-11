@@ -39,3 +39,5 @@ model/realnetra_vit_candidate/
 scripts/
 backend/test_candidate_integration.py
 realnetra_v5_*.md
+model/backup_*/
+model/realnetra_vit_adapted_*/
