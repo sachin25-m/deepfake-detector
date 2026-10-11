@@ -562,12 +562,15 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
     ret_s = float(ret_s_raw) if ret_s_raw is not None else 0.10
     bnd_actually_computed = bnd_s_raw is not None
     ret_actually_computed = ret_s_raw is not None
+    avt_s_raw = fbd.get("avatar_filter_score", None)
+    avt_s = float(avt_s_raw) if avt_s_raw is not None else 0.10
     forensic_fake_p = float(forensic_res.get("probability_deepfake", 0.10)) * 100.0 if forensic_res else 10.0
 
     # Verified forensic artifact flags
     strong_fft = (fft_s >= 0.90)
     strong_boundary = (bnd_s >= 0.85 and bnd_actually_computed)
     strong_ela = (ela_s >= 0.80)
+    strong_avatar_filter = (avt_s >= 0.80)
 
     # 5. Primary Neural Classifier Authority & Audited Heuristic Telemetry
     primary_fake_p = vit_fake_p
@@ -597,6 +600,10 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
         # Synthetic programmatic drawing / canvas with manipulation artifacts
         final_fake_p = max(primary_fake_p, 75.0)
         heuristic_action = "corroborated_artifact_boost"
+    elif strong_avatar_filter:
+        # Avatar / heavy beauty airbrush smoothing detected
+        final_fake_p = max(primary_fake_p, 80.0)
+        heuristic_action = "avatar_filter_detected"
     elif fft_s >= 0.98:
         # Extreme periodic frequency artifact from StyleGAN / latent diffusion
         final_fake_p = max(primary_fake_p, 75.0)
@@ -616,7 +623,7 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
         # Pristine natural sensor optics with verified lack of synthetic periodic lattice (Obama, studio portraits)
         final_fake_p = max(0.0, primary_fake_p - 32.0)
         heuristic_action = "camera_anchor_cleared"
-    elif primary_fake_p <= 35.0 and face_count >= 1 and bnd_actually_computed and bnd_s <= 0.02 and not is_synth_canvas:
+    elif primary_fake_p <= 35.0 and face_count >= 1 and bnd_actually_computed and bnd_s <= 0.02 and not is_synth_canvas and not strong_avatar_filter:
         # Verified camera noise with authentic human facial portrait
         final_fake_p = max(0.0, primary_fake_p - 8.0)
         heuristic_action = "camera_anchor_cleared"

@@ -492,6 +492,62 @@ class ForensicAnalyzer:
         except Exception:
             return 0.10, 0.10
 
+    def compute_avatar_and_filter_score(self, pil_img, face_box=None):
+        """
+        Inspects skin micro-texture attenuation, color quantization, and bilateral airbrushing.
+        - Heavy Beauty Filters: Wipe out facial micro-noise (noise_var < 0.40, lap_var < 6.0).
+        - Avatars / Cartoon Filters: Exhibit extreme color quantization with flat shading (noise_var < 1.2, unique_colors < 160).
+        - Camera Photos & WhatsApp: Retain rich sensor noise (noise_var >= 2.5, lap_var >= 20.0) and high frequency detail.
+        """
+        try:
+            import cv2
+            arr = np.array(pil_img.convert('RGB'))
+            h, w, _ = arr.shape
+            if face_box is not None and len(face_box) == 4:
+                x, y, fw, fh = face_box
+                # Focus on center 60% of the face to sample skin rather than high-contrast hair/clothing edges
+                cx, cy = x + fw // 2, y + fh // 2
+                half_w, half_h = int(fw * 0.30), int(fh * 0.30)
+                fy1, fy2 = max(0, cy - half_h), min(h, cy + half_h)
+                fx1, fx2 = max(0, cx - half_w), min(w, cx + half_w)
+            else:
+                fy1, fy2 = int(h * 0.25), int(h * 0.75)
+                fx1, fx2 = int(w * 0.25), int(w * 0.75)
+
+            face_crop = arr[fy1:fy2, fx1:fx2]
+            if face_crop.size < 400:
+                return 0.10, "authentic_natural_texture"
+
+            # 1. Surface vs Edge variance (Bilateral / Airbrushing disparity)
+            gray = cv2.cvtColor(face_crop, cv2.COLOR_RGB2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 1.0)
+            noise = gray.astype(np.float32) - blurred.astype(np.float32)
+            noise_var = float(np.var(noise))
+            lap = cv2.Laplacian(gray, cv2.CV_32F)
+            lap_var = float(np.var(lap))
+
+            # Camera photos and WhatsApp compressed photos always preserve optical sensor shot noise:
+            # noise_var is comfortably above 2.5 and lap_var above 20.0
+            if noise_var >= 2.5 and lap_var >= 20.0:
+                return 0.10, "authentic_natural_texture"
+
+            # 2. Color bin diversity (quantize to 5 bits per channel = 32 levels)
+            q_face = (face_crop // 8).astype(np.int32)
+            flat_colors = q_face[:, :, 0] * 1024 + q_face[:, :, 1] * 32 + q_face[:, :, 2]
+            unique_colors = len(np.unique(flat_colors))
+
+            # Avatar detection: flat-shaded / cel-shaded cartoon / 3D rendered avatar
+            if (noise_var < 1.2 and unique_colors < 160) or (noise_var < 0.50 and lap_var < 10.0):
+                return 0.88, "avatar_color_quantization"
+
+            # Heavy beauty filter: airbrushed skin with erased high-frequency pore noise
+            if noise_var < 0.40 and lap_var < 6.0:
+                return 0.85, "beauty_airbrush_smoothing"
+
+            return 0.10, "authentic_natural_texture"
+        except Exception:
+            return 0.10, "authentic_natural_texture"
+
     def analyze_image(self, image_bytes: bytes, filename: str = "", pil_img: Image.Image = None):
         """
         Executes full multi-modal forensic & neural detection on an image.
@@ -538,6 +594,9 @@ class ForensicAnalyzer:
         # 5. Retouching & Noise Discrepancy Analysis (face-dependent)
         retouch_score, noise_score = self.compute_retouching_and_noise_score(pil_img, primary_face)
 
+        # 6. Avatar & Heavy Beauty Filter Inspection
+        avatar_score, avatar_type = self.compute_avatar_and_filter_score(pil_img, primary_face)
+
         # FIX BUG-5: Track which signals were actually computed vs. sentinel defaults.
         # boundary_seam and retouch/noise return 0.10 sentinel for no-face images.
         # Only include them in the average if a face was detected.
@@ -550,6 +609,10 @@ class ForensicAnalyzer:
         # Always-available signals (computed on full image regardless of face detection)
         available_signals = [ela_score, fft_score]
         available_labels = ["ela", "fft"]
+
+        if avatar_score >= 0.70:
+            available_signals.append(avatar_score)
+            available_labels.append("avatar_filter")
 
         # Face-dependent signals (only computed with valid face box)
         if has_face:
@@ -599,6 +662,8 @@ class ForensicAnalyzer:
             "fft_spectral_score": round(float(fft_score), 3),
             "boundary_seam_score": round(float(boundary_score), 3) if has_face else None,
             "retouch_noise_score": round(float(max(retouch_score, noise_score)), 3) if has_face else None,
+            "avatar_filter_score": round(float(avatar_score), 3),
+            "texture_mode": avatar_type,
             "signals_computed": available_labels,
             "face_signals_available": has_face,
         }

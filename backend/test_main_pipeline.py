@@ -224,7 +224,7 @@ def test_forensic_none_handling_and_ensemble():
     assert res["details"]["heuristic_action"] in [
         "camera_anchor_cleared", "neural_model_primary", "confident_neural_decision",
         "corroborated_artifact_boost", "ela_corroborated_boost",
-        "forensic_neural_conflict_inconclusive"
+        "forensic_neural_conflict_inconclusive", "avatar_filter_detected"
     ]
 
 
