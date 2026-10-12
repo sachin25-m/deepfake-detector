@@ -631,6 +631,10 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
         # Authentic human facial distribution
         final_fake_p = primary_fake_p
         heuristic_action = "camera_anchor_cleared"
+    elif face_count == 0 and not is_synth_canvas and not is_known_manipulated and not strong_avatar_filter and fbd.get("texture_mode") == "authentic_natural_texture" and ela_s <= 0.20:
+        # Authentic optical photograph of natural landscape / scenery / architecture without human faces
+        final_fake_p = min(primary_fake_p, 18.0)
+        heuristic_action = "landscape_camera_cleared"
     elif 28.0 < primary_fake_p < 52.0:
         final_fake_p = primary_fake_p
         heuristic_action = "confident_neural_decision"
@@ -648,7 +652,10 @@ def process_image_pipeline(file_bytes: bytes, filename: str = "unknown", content
     elif combined_fake_p <= 28.0:
         verdict = "REAL"
         confidence = combined_real_p
-        explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer."
+        if face_count == 0:
+            explanation = "Authentic natural photograph verified with consistent optical sensor noise, clean error levels, and absence of synthetic artifacts."
+        else:
+            explanation = "Natural facial feature distribution, authentic pixel coherence, and consistent noise spectrum verified by Vision Transformer."
     else:
         verdict = "INCONCLUSIVE"
         confidence = round(max(combined_real_p, combined_fake_p), 2)
